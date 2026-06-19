@@ -404,7 +404,7 @@ document.addEventListener('webkitfullscreenchange', updateFsIcon);
 // (un tableau JSON d'enregistrements, un objet par ligne Grist,
 // avec les mêmes noms de champs que dans Grist : Nom, Prenom,
 // Heure, Date_de_naissance, Avis_CDM, Avis_IEN, Ecole, etc.)
-const DATA_URL = 'https://n8n.incubateur.education.gouv.fr/webhook/483ffae5-c7bb-4dcd-acd1-474d5d1b9f45'';
+const DATA_URL = 'https://n8n.incubateur.education.gouv.fr/webhook/483ffae5-c7bb-4dcd-acd1-474d5d1b9f45';
 
 // La colonne $Ecole de la table principale est une Référence vers
 // la table AnnuaireCopie : son nœud Grist Read ne renvoie que
@@ -412,6 +412,11 @@ const DATA_URL = 'https://n8n.incubateur.education.gouv.fr/webhook/483ffae5-c7bb
 // table AnnuaireCopie (via un second webhook n8n) pour résoudre
 // l'ID vers la colonne Ecole_concat_.
 const ECOLES_DATA_URL = 'https://n8n.incubateur.education.gouv.fr/webhook/3df3b004-efad-40df-8381-46f770586962';
+
+// Paramètre transmis dans l'URL de la page (ex. .../widget.html?uuid_com=xxxx)
+// et retransmis au webhook n8n pour filtrer la table ComAppel côté serveur.
+const pageParams = new URLSearchParams(window.location.search);
+const UUID_COM = pageParams.get('uuid_com') || '';
 
 // Intervalle de rafraîchissement automatique des données (ms).
 // Mettre à 0 pour désactiver le rafraîchissement automatique
@@ -469,9 +474,15 @@ function resolveEcole(val) {
 }
 
 async function loadRecords({ silent } = {}) {
+  if (!UUID_COM) {
+    showStatus("Paramètre 'uuid_com' manquant dans l'URL de la page.", true);
+    return;
+  }
   if (!silent) showStatus('Chargement des données…');
   try {
-    const res = await fetch(DATA_URL, { headers: { 'Accept': 'application/json' } });
+    const url = new URL(DATA_URL);
+    if (UUID_COM) url.searchParams.set('uuid_com', UUID_COM);
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const list = Array.isArray(data) ? data : (Array.isArray(data.records) ? data.records : []);
