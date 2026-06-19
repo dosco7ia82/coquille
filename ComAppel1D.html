@@ -421,6 +421,16 @@ async function loadRecords({ silent } = {}) {
     const list = Array.isArray(data) ? data : (Array.isArray(data.records) ? data.records : []);
     const normalized = list.map(normalizeRecord).filter(Boolean);
 
+    // Filtre : on exclut les enregistrements annulés
+    normalized = normalized.filter(r => r.Statut !== 'Annulé');
+
+    // Tri : par créneau horaire (Heure) croissant
+    normalized.sort((a, b) => {
+      const ha = (a.Heure ?? '').toString();
+      const hb = (b.Heure ?? '').toString();
+      return ha.localeCompare(hb, 'fr', { numeric: true, sensitivity: 'base' });
+    });
+
     if (!normalized.length) {
       showStatus("Aucun enregistrement reçu.", true);
       return;
