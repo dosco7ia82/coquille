@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <title>Commission d'appel 1D</title>
+<!--
+  ============================================================
+  Page HTML autonome — alimentée par un nœud n8n "Grist Read".
+  Configurer DATA_URL ci-dessous (webhook n8n qui renvoie le
+  tableau JSON des enregistrements issus du nœud Grist Read).
+  Voir le bloc <script> en fin de fichier, section CONFIG.
+  ============================================================
+-->
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
@@ -389,9 +397,18 @@ fsBtn.addEventListener('click', () => {
 document.addEventListener('fullscreenchange', updateFsIcon);
 document.addEventListener('webkitfullscreenchange', updateFsIcon);
 
-
+// ============================================================
+// CONFIG — page autonome alimentée par un nœud n8n "Grist Read"
+// ============================================================
+// URL du webhook n8n qui expose la sortie du nœud Grist Read
+// (un tableau JSON d'enregistrements, un objet par ligne Grist,
+// avec les mêmes noms de champs que dans Grist : Nom, Prenom,
+// Heure, Date_de_naissance, Avis_CDM, Avis_IEN, etc.)
 const DATA_URL = 'https://n8n.incubateur.education.gouv.fr/webhook/483ffae5-c7bb-4dcd-acd1-474d5d1b9f45';
 
+// Intervalle de rafraîchissement automatique des données (ms).
+// Mettre à 0 pour désactiver le rafraîchissement automatique
+// (seul le bouton "recharger" ou le chargement initial agira).
 const POLL_INTERVAL_MS = 0;
 // ============================================================
 
@@ -419,7 +436,7 @@ async function loadRecords({ silent } = {}) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const list = Array.isArray(data) ? data : (Array.isArray(data.records) ? data.records : []);
-    const normalized = list.map(normalizeRecord).filter(Boolean);
+    let normalized = list.map(normalizeRecord).filter(Boolean);
 
     // Filtre : on exclut les enregistrements annulés
     normalized = normalized.filter(r => r.Statut !== 'Annulé');
