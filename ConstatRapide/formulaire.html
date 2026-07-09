@@ -378,6 +378,7 @@ button:focus-visible {
                             <label for="f_TPS">TPS</label>
                             <input type="number" id="f_TPS" name="TPS" min="0" step="1"
                                    aria-label="Toute Petite Section" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- PS -->
@@ -386,6 +387,7 @@ button:focus-visible {
                             <label for="f_PS">PS</label>
                             <input type="number" id="f_PS" name="PS" min="0" step="1"
                                    aria-label="Petite Section" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- MS -->
@@ -394,6 +396,7 @@ button:focus-visible {
                             <label for="f_MS">MS</label>
                             <input type="number" id="f_MS" name="MS" min="0" step="1"
                                    aria-label="Moyenne Section" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- GS -->
@@ -402,6 +405,7 @@ button:focus-visible {
                             <label for="f_GS">GS</label>
                             <input type="number" id="f_GS" name="GS" min="0" step="1"
                                    aria-label="Grande Section" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                 </div>
@@ -418,6 +422,7 @@ button:focus-visible {
                             <label for="f_CP">CP</label>
                             <input type="number" id="f_CP" name="CP" min="0" step="1"
                                    aria-label="Cours Préparatoire" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CE1 -->
@@ -426,6 +431,7 @@ button:focus-visible {
                             <label for="f_CE1">CE1</label>
                             <input type="number" id="f_CE1" name="CE1" min="0" step="1"
                                    aria-label="Cours Élémentaire 1" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CE2 -->
@@ -434,6 +440,7 @@ button:focus-visible {
                             <label for="f_CE2">CE2</label>
                             <input type="number" id="f_CE2" name="CE2" min="0" step="1"
                                    aria-label="Cours Élémentaire 2" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CM1 -->
@@ -442,6 +449,7 @@ button:focus-visible {
                             <label for="f_CM1">CM1</label>
                             <input type="number" id="f_CM1" name="CM1" min="0" step="1"
                                    aria-label="Cours Moyen 1" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CM2 -->
@@ -450,6 +458,7 @@ button:focus-visible {
                             <label for="f_CM2">CM2</label>
                             <input type="number" id="f_CM2" name="CM2" min="0" step="1"
                                    aria-label="Cours Moyen 2" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                 </div>
@@ -467,6 +476,7 @@ button:focus-visible {
                             <label for="f_CP_ULIS">CP</label>
                             <input type="number" id="f_CP_ULIS" name="CP_ULIS" min="0" step="1"
                                    aria-label="CP ULIS" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CE1 ULIS -->
@@ -475,6 +485,7 @@ button:focus-visible {
                             <label for="f_CE1_ULIS">CE1</label>
                             <input type="number" id="f_CE1_ULIS" name="CE1_ULIS" min="0" step="1"
                                    aria-label="CE1 ULIS" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CE2 ULIS -->
@@ -483,6 +494,7 @@ button:focus-visible {
                             <label for="f_CE2_ULIS">CE2</label>
                             <input type="number" id="f_CE2_ULIS" name="CE2_ULIS" min="0" step="1"
                                    aria-label="CE2 ULIS" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CM1 ULIS -->
@@ -491,6 +503,7 @@ button:focus-visible {
                             <label for="f_CM1_ULIS">CM1</label>
                             <input type="number" id="f_CM1_ULIS" name="CM1_ULIS" min="0" step="1"
                                    aria-label="CM1 ULIS" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                     <!-- CM2 ULIS -->
@@ -499,6 +512,7 @@ button:focus-visible {
                             <label for="f_CM2_ULIS">CM2</label>
                             <input type="number" id="f_CM2_ULIS" name="CM2_ULIS" min="0" step="1"
                                    aria-label="CM2 ULIS" autocomplete="off" />
+                            <div class="invalid-feedback">Merci de saisir uniquement des nombres.</div>
                         </div>
                     </div>
                 </div>
@@ -640,8 +654,9 @@ function validateField(input) {
     return ok;
 }
 
-// Validation au départ du champ
+// Validation en temps réel et au départ du champ
 document.querySelectorAll('#effectifsForm input[type="number"]').forEach(inp => {
+    inp.addEventListener('input', () => validateField(inp));
     inp.addEventListener('blur', () => validateField(inp));
     // Bloquer les caractères non numériques (sauf suppression/navigation)
     inp.addEventListener('keydown', e => {
@@ -688,7 +703,7 @@ $('effectifsForm').addEventListener('submit', async (e) => {
     const allValid = inputs.every(validateField);
 
     if (!allValid) {
-        $('formErrorMsg').textContent = "Certaines valeurs sont invalides. Seuls des entiers positifs sont acceptés.";
+        $('formErrorMsg').textContent = "Merci de saisir uniquement des nombres.";
         $('formErrorBlock').classList.remove('d-none');
         $('formErrorBlock').focus();
         announce("Erreur : certaines valeurs sont invalides.");
