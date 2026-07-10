@@ -532,7 +532,7 @@ button:focus-visible {
 
                 <!-- Bouton -->
                 <div class="d-grid mt-4">
-                    <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit">
+                    <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit" disabled>
                         <span id="btnSpinner" class="spinner-border spinner-border-sm me-2 d-none"
                               role="status" aria-hidden="true"></span>
                         <i class="fas fa-paper-plane me-2" id="btnIcon" aria-hidden="true"></i>
@@ -769,6 +769,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (data) {
             ecoleData = data;
             displayEcoleData(data);
+            $('btnSubmit').disabled = false;
         } else {
             showLoadError("Aucune donnée trouvée pour cet UUID.");
         }
