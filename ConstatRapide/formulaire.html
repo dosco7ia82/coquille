@@ -612,13 +612,16 @@ function announce(msg) {
 
 // ── Données école (pour les inclure dans le payload) ──
 let ecoleData = {};
-let lastPayload = null;
+let lastRowData = null; // état complet et à jour de la ligne, relu depuis Grist après envoi
 
-// ── Export .xlsx des dernières valeurs saisies ───────────────
+// ── Export .xlsx de l'état actuel de la ligne pour cette école ─
 const FIELD_LABELS = {
-    uai: "UAI",
+    uuid: "UUID",
+    uai: "UAI", UAI: "UAI",
     commune: "Commune",
+    UAI_ecole_commune: "Commune", uai_ecole_commune: "Commune",
     sigle: "École",
+    UAI_ecole_sigle: "École", uai_ecole_sigle: "École",
     annee_scolaire: "Année scolaire",
     timestamp: "Date d'envoi",
     TPS: "TPS", PS: "PS", MS: "MS", GS: "GS",
@@ -627,25 +630,24 @@ const FIELD_LABELS = {
     CM1_ULIS: "CM1 (ULIS)", CM2_ULIS: "CM2 (ULIS)",
 };
 
-function downloadPayloadAsXlsx(payload) {
-    const rows = Object.entries(payload)
-        .filter(([key]) => key !== "uuid")
-        .map(([key, value]) => ({
-            Champ: FIELD_LABELS[key] || key,
-            Valeur: value,
-        }));
+function downloadRowAsXlsx(row) {
+    const rows = Object.entries(row).map(([key, value]) => ({
+        Champ: FIELD_LABELS[key] || key.replace(/_/g, " "),
+        Valeur: value,
+    }));
 
     const sheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Effectifs");
 
-    const sigle = (payload.sigle || payload.uai || "ecole").replace(/[^\w-]+/g, "_");
-    XLSX.writeFile(workbook, `constat-effectifs_${sigle}_${payload.annee_scolaire}.xlsx`);
+    const sigle = (row.sigle || row.UAI_ecole_sigle || row.uai_ecole_sigle
+        || row.uai || row.UAI || "ecole").toString().replace(/[^\w-]+/g, "_");
+    XLSX.writeFile(workbook, `constat-effectifs_${sigle}.xlsx`);
 }
 
 $('btnDownloadXlsx').addEventListener('click', (e) => {
     e.preventDefault();
-    if (lastPayload) downloadPayloadAsXlsx(lastPayload);
+    if (lastRowData) downloadRowAsXlsx(lastRowData);
 });
 
 // ── 1. Récupération UUID + appel webhook école ──────────────
@@ -780,8 +782,14 @@ $('effectifsForm').addEventListener('submit', async (e) => {
         });
         if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
 
-        // Succès
-        lastPayload = payload;
+        // Succès : on relit la ligne à jour depuis Grist pour l'export .xlsx
+        try {
+            lastRowData = await fetchEcoleData(uuid);
+        } catch (_) {
+            lastRowData = null;
+        }
+        $('btnDownloadXlsx').classList.toggle('d-none', !lastRowData);
+
         $('effectifsForm').classList.add('d-none');
         $('successBlock').classList.remove('d-none');
         $('successBlock').focus();
