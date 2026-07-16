@@ -810,21 +810,62 @@ function showLoadError(msg) {
 }
 
 // ── 2. Validation champ ──────────────────────────────────────
+// Chaque champ ULIS doit rester ≤ à l'effectif du niveau correspondant.
+const ULIS_LEVEL_MAP = {
+    f_CP_ULIS:  'f_CP',
+    f_CE1_ULIS: 'f_CE1',
+    f_CE2_ULIS: 'f_CE2',
+    f_CM1_ULIS: 'f_CM1',
+    f_CM2_ULIS: 'f_CM2',
+};
+const LEVEL_ULIS_MAP = Object.fromEntries(
+    Object.entries(ULIS_LEVEL_MAP).map(([ulisId, levelId]) => [levelId, ulisId])
+);
+
+function setFieldError(input, message) {
+    input.classList.add("is-invalid");
+    const feedback = input.parentElement.querySelector('.invalid-feedback');
+    if (feedback) feedback.textContent = message;
+}
+
+function clearFieldError(input) {
+    input.classList.remove("is-invalid");
+}
+
 function validateField(input) {
     const val = input.value.trim();
     // Vide = autorisé (on n'enverra pas ce champ)
     if (val === "") {
-        input.classList.remove("is-invalid");
+        clearFieldError(input);
         return true;
     }
-    const ok = /^\d+$/.test(val) && parseInt(val, 10) >= 0;
-    input.classList.toggle("is-invalid", !ok);
-    return ok;
+
+    if (!/^\d+$/.test(val)) {
+        setFieldError(input, "Merci de saisir uniquement des nombres.");
+        return false;
+    }
+
+    const levelId = ULIS_LEVEL_MAP[input.id];
+    if (levelId) {
+        const levelVal = parseInt($(levelId).value.trim() || "0", 10);
+        if (parseInt(val, 10) > levelVal) {
+            setFieldError(input, "Ne peut pas dépasser l'effectif du niveau correspondant.");
+            return false;
+        }
+    }
+
+    clearFieldError(input);
+    return true;
 }
 
 // Validation en temps réel et au départ du champ
 document.querySelectorAll('#effectifsForm input[type="number"]').forEach(inp => {
-    inp.addEventListener('input', () => validateField(inp));
+    inp.addEventListener('input', () => {
+        validateField(inp);
+        // Le niveau vient de changer : le champ ULIS associé peut devenir invalide.
+        const pairedUlisId = LEVEL_ULIS_MAP[inp.id];
+        if (pairedUlisId) validateField($(pairedUlisId));
+    });
     inp.addEventListener('blur', () => validateField(inp));
     // Bloquer les caractères non numériques (sauf suppression/navigation)
     inp.addEventListener('keydown', e => {
@@ -871,7 +912,7 @@ $('effectifsForm').addEventListener('submit', async (e) => {
     const allValid = inputs.every(validateField);
 
     if (!allValid) {
-        $('formErrorMsg').textContent = "Merci de saisir uniquement des nombres.";
+        $('formErrorMsg').textContent = "Certaines valeurs sont invalides. Merci de corriger les champs en rouge.";
         $('formErrorBlock').classList.remove('d-none');
         $('formErrorBlock').focus();
         announce("Erreur : certaines valeurs sont invalides.");
