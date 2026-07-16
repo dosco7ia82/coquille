@@ -252,9 +252,24 @@ button:focus-visible {
     margin: 0 0 8px;
 }
 
+#pdfTemplate h2 {
+    font-size: 14px;
+    color: var(--blue-france-main-525);
+    margin: 14px 0 4px;
+}
+
 #pdfTemplate p {
     margin: 2px 0;
     font-size: 13px;
+}
+
+#pdfTemplate .pdf-ecole {
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+#pdfTemplate .pdf-circo {
+    margin-top: 0;
 }
 
 #pdfTemplate table {
@@ -283,6 +298,11 @@ button:focus-visible {
 
 #pdfTemplate tr.pdf-ulis td {
     font-style: italic;
+    color: var(--text-mention-grey);
+}
+
+#pdfTemplate tr.pdf-ulis td:last-child {
+    font-weight: 400;
 }
 
 #pdfTemplate .pdf-total {
@@ -294,7 +314,6 @@ button:focus-visible {
 /* Impression : seul #pdfTemplate est visible, mis en page pour l'export PDF */
 @page {
     size: A4 portrait;
-    margin: 25mm 20mm;
 }
 
 @media print {
@@ -730,9 +749,10 @@ function buildPdfHtml(row) {
 
     return `
         <h1>Constat rapide de rentrée ${row.rentree || ''}</h1>
-        <p>${nomEcole}, ${commune} (${uai})</p>
-        <p>Circonscription : ${row.circonscription || ''}</p>
+        <p class="pdf-ecole">${nomEcole}, ${commune} (${uai})</p>
+        <p class="pdf-circo">Circonscription : ${row.circonscription || ''}</p>
         <p>Etat en date du ${row.Date_formatee || ''}</p>
+        <h2>Nombre d'élèves en préélémentaire</h2>
         <table>
             ${PDF_COLGROUP}
             <thead>
@@ -746,6 +766,7 @@ function buildPdfHtml(row) {
                 </tr>
             </tbody>
         </table>
+        <h2>Nombre d'élèves en élémentaire</h2>
         <table>
             ${PDF_COLGROUP}
             <thead>
