@@ -272,6 +272,11 @@ button:focus-visible {
 }
 
 /* Impression : seul #pdfTemplate est visible, mis en page pour l'export PDF */
+@page {
+    size: A4 portrait;
+    margin: 25mm 20mm;
+}
+
 @media print {
     body > *:not(#pdfTemplate) {
         display: none !important;
