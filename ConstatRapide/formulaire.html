@@ -580,9 +580,6 @@ button:focus-visible {
         integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
         crossorigin="anonymous"></script>
 
-<!-- SheetJS (export .xlsx) -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
 <script>
 // ══════════════════════════════════════════════════════════════
 // ⚙️  CONFIGURATION — À PERSONNALISER
@@ -599,6 +596,10 @@ const CONFIG = {
     //                    TPS_ULIS?, PS_ULIS?, ... CM2_ULIS? }
     // Les champs laissés vides ne sont PAS inclus dans le payload.
     webhookSubmit: 'https://n8n.incubateur.education.gouv.fr/webhook/8ce18bbf-0123-4a11-a0ff-dda673441b25',
+
+    // Webhook n8n : génère et renvoie le fichier .xlsx (état complet de la table pour l'UUID)
+    // → Dans n8n : Webhook (POST) → lecture Grist → génération .xlsx → réponse binaire
+    webhookExport: 'https://n8n.incubateur.education.gouv.fr/webhook/a3f024ed-9322-4259-80c3-9160c8345ac8',
 };
 // ══════════════════════════════════════════════════════════════
 
@@ -612,42 +613,53 @@ function announce(msg) {
 
 // ── Données école (pour les inclure dans le payload) ──
 let ecoleData = {};
-let lastRowData = null; // état complet et à jour de la ligne, relu depuis Grist après envoi
 
-// ── Export .xlsx de l'état actuel de la ligne pour cette école ─
-const FIELD_LABELS = {
-    uuid: "UUID",
-    uai: "UAI", UAI: "UAI",
-    commune: "Commune",
-    UAI_ecole_commune: "Commune", uai_ecole_commune: "Commune",
-    sigle: "École",
-    UAI_ecole_sigle: "École", uai_ecole_sigle: "École",
-    annee_scolaire: "Année scolaire",
-    timestamp: "Date d'envoi",
-    TPS: "TPS", PS: "PS", MS: "MS", GS: "GS",
-    CP: "CP", CE1: "CE1", CE2: "CE2", CM1: "CM1", CM2: "CM2",
-    CP_ULIS: "CP (ULIS)", CE1_ULIS: "CE1 (ULIS)", CE2_ULIS: "CE2 (ULIS)",
-    CM1_ULIS: "CM1 (ULIS)", CM2_ULIS: "CM2 (ULIS)",
-};
-
-function downloadRowAsXlsx(row) {
-    const rows = Object.entries(row).map(([key, value]) => ({
-        Champ: FIELD_LABELS[key] || key.replace(/_/g, " "),
-        Valeur: value,
-    }));
-
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Effectifs");
-
-    const sigle = (row.sigle || row.UAI_ecole_sigle || row.uai_ecole_sigle
-        || row.uai || row.UAI || "ecole").toString().replace(/[^\w-]+/g, "_");
-    XLSX.writeFile(workbook, `constat-effectifs_${sigle}.xlsx`);
+// ── Export .xlsx (généré côté n8n à partir de l'état actuel de la table) ──
+function parseFilenameFromContentDisposition(header) {
+    if (!header) return null;
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+    return match ? decodeURIComponent(match[1]) : null;
 }
 
-$('btnDownloadXlsx').addEventListener('click', (e) => {
+async function downloadEffectifsXlsx(uuid) {
+    const res = await fetch(CONFIG.webhookExport, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid }),
+    });
+    if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+
+    const blob = await res.blob();
+    const filename = parseFilenameFromContentDisposition(res.headers.get('Content-Disposition'))
+        || `constat-effectifs_${uuid}.xlsx`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+$('btnDownloadXlsx').addEventListener('click', async (e) => {
     e.preventDefault();
-    if (lastRowData) downloadRowAsXlsx(lastRowData);
+    const btn = $('btnDownloadXlsx');
+    const originalLabel = btn.innerHTML;
+    btn.classList.add('disabled');
+    btn.setAttribute('aria-disabled', 'true');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Génération du fichier…';
+
+    try {
+        await downloadEffectifsXlsx(getUUID());
+    } catch (err) {
+        announce("Erreur lors du téléchargement du fichier : " + err.message);
+    } finally {
+        btn.classList.remove('disabled');
+        btn.removeAttribute('aria-disabled');
+        btn.innerHTML = originalLabel;
+    }
 });
 
 // ── 1. Récupération UUID + appel webhook école ──────────────
@@ -782,14 +794,7 @@ $('effectifsForm').addEventListener('submit', async (e) => {
         });
         if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
 
-        // Succès : on relit la ligne à jour depuis Grist pour l'export .xlsx
-        try {
-            lastRowData = await fetchEcoleData(uuid);
-        } catch (_) {
-            lastRowData = null;
-        }
-        $('btnDownloadXlsx').classList.toggle('d-none', !lastRowData);
-
+        // Succès
         $('effectifsForm').classList.add('d-none');
         $('successBlock').classList.remove('d-none');
         $('successBlock').focus();
