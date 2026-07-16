@@ -220,29 +220,10 @@ button:focus-visible {
     white-space: nowrap;
 }
 
-#pdfOverlay {
-    position: fixed;
-    inset: 0;
-    background: #fff;
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    color: var(--blue-france-main-525);
-}
-
-#pdfOverlay.d-none {
-    display: none;
-}
-
 #pdfTemplate {
     display: none;
-    width: 650px;
-    background: #fff;
     color: #161616;
-    font-family: Arial, sans-serif;
-    padding: 16px;
+    font-family: Marianne, Arial, sans-serif;
 }
 
 #pdfTemplate h1 {
@@ -258,6 +239,7 @@ button:focus-visible {
 
 #pdfTemplate table {
     border-collapse: collapse;
+    table-layout: fixed;
     width: 100%;
     margin: 16px 0;
 }
@@ -268,16 +250,36 @@ button:focus-visible {
     padding: 6px 10px;
     text-align: center;
     font-size: 13px;
+    overflow: hidden;
 }
 
 #pdfTemplate th {
     background: var(--background-alt-blue-france);
 }
 
+#pdfTemplate td:last-child {
+    font-weight: 700;
+}
+
+#pdfTemplate tr.pdf-ulis td {
+    font-style: italic;
+}
+
 #pdfTemplate .pdf-total {
     text-align: right;
     font-weight: 700;
     margin-top: 8px;
+}
+
+/* Impression : seul #pdfTemplate est visible, mis en page pour l'export PDF */
+@media print {
+    body > *:not(#pdfTemplate) {
+        display: none !important;
+    }
+
+    #pdfTemplate {
+        display: block !important;
+    }
 }
 
 /* Responsive fidelity preserved from original */
@@ -611,7 +613,7 @@ button:focus-visible {
                 <p class="text-muted mb-0"><strong>Les données ont bien été transmises.</strong></p>
 				<p class="text-muted mt-2 mb-0">Vous pouvez récupérer les effectifs saisis :</p>
                 <a href="#" id="btnDownloadPdf" class="btn btn-outline-primary mt-3">
-                    <i class="fas fa-file-pdf me-2" aria-hidden="true"></i>Télécharger
+                    <i class="fas fa-file-pdf me-2" aria-hidden="true"></i>Imprimer / Enregistrer en PDF
                 </a>
             </div>
 
@@ -635,17 +637,13 @@ button:focus-visible {
 <div id="liveRegion" role="status" aria-live="polite" aria-atomic="true"
      style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
 
-<!-- Gabarit utilisé pour générer le PDF (rendu à l'écran le temps de la capture, recouvert par l'overlay) -->
+<!-- Gabarit imprimé pour générer le PDF (masqué à l'écran, affiché uniquement via @media print) -->
 <div id="pdfTemplate" aria-hidden="true"></div>
-<div id="pdfOverlay" class="d-none" aria-hidden="true">Génération du PDF…</div>
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
         crossorigin="anonymous"></script>
-
-<!-- html2pdf.js (export .pdf côté client) -->
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -693,9 +691,15 @@ async function fetchPdfData(uuid) {
     return await res.json();
 }
 
-function buildPdfHtml(row) {
-    const dateFormatee = new Date().toLocaleDateString('fr-FR');
+const PDF_COLGROUP = `
+    <colgroup>
+        <col style="width:14%"><col style="width:12%"><col style="width:12%">
+        <col style="width:12%"><col style="width:12%"><col style="width:12%">
+        <col style="width:26%">
+    </colgroup>
+`;
 
+function buildPdfHtml(row) {
     // Filet de sécurité si le webhook renvoie encore d'anciens noms Grist pour ces
     // trois champs (déjà gérés par displayEcoleData()).
     const uai     = (row.uai || row.UAI || '').toUpperCase();
@@ -707,20 +711,22 @@ function buildPdfHtml(row) {
         <h1>Constat rapide de rentrée ${row.rentree || ''}</h1>
         <p>${nomEcole}, ${commune} (${uai})</p>
         <p>Circonscription : ${row.circonscription || ''}</p>
-        <p>Etat en date du ${dateFormatee}</p>
+        <p>Etat en date du ${row.Date_formatee || ''}</p>
         <table>
+            ${PDF_COLGROUP}
             <thead>
-                <tr><th></th><th>TPS</th><th>PS</th><th>MS</th><th>GS</th><th>Sous-total Préélém</th></tr>
+                <tr><th></th><th>TPS</th><th>PS</th><th>MS</th><th>GS</th><th></th><th>Sous-total Préélém</th></tr>
             </thead>
             <tbody>
                 <tr>
                     <td>Total</td>
-                    <td>${row.TPS ?? 0}</td><td>${row.PS ?? 0}</td><td>${row.MS ?? 0}</td><td>${row.GS ?? 0}</td>
+                    <td>${row.TPS ?? 0}</td><td>${row.PS ?? 0}</td><td>${row.MS ?? 0}</td><td>${row.GS ?? 0}</td><td></td>
                     <td>${row.Total_Preelem ?? 0}</td>
                 </tr>
             </tbody>
         </table>
         <table>
+            ${PDF_COLGROUP}
             <thead>
                 <tr><th></th><th>CP</th><th>CE1</th><th>CE2</th><th>CM1</th><th>CM2</th><th>Sous-total Élém</th></tr>
             </thead>
@@ -730,7 +736,7 @@ function buildPdfHtml(row) {
                     <td>${row.CP ?? 0}</td><td>${row.CE1 ?? 0}</td><td>${row.CE2 ?? 0}</td><td>${row.CM1 ?? 0}</td><td>${row.CM2 ?? 0}</td>
                     <td>${row.Total_Elem ?? 0}</td>
                 </tr>
-                <tr>
+                <tr class="pdf-ulis">
                     <td>Dont ULIS</td>
                     <td>${row.CP_ULIS ?? 0}</td><td>${row.CE1_ULIS ?? 0}</td><td>${row.CE2_ULIS ?? 0}</td><td>${row.CM1_ULIS ?? 0}</td><td>${row.CM2_ULIS ?? 0}</td>
                     <td>${row.Total_ULIS ?? 0}</td>
@@ -741,36 +747,13 @@ function buildPdfHtml(row) {
     `;
 }
 
-async function downloadEffectifsPdf(uuid) {
+async function printEffectifsPdf(uuid) {
     const row = await fetchPdfData(uuid);
-    const container = $('pdfTemplate');
-    const overlay = $('pdfOverlay');
-    container.innerHTML = buildPdfHtml(row);
+    $('pdfTemplate').innerHTML = buildPdfHtml(row);
 
-    // Le gabarit doit être réellement rendu (pas display:none) pour que html2canvas
-    // puisse le capturer ; l'overlay le recouvre pour que l'utilisateur ne le voie pas.
-    // html2canvas capture par ailleurs mal la page si elle est scrollée : on remet le
-    // scroll à zéro le temps de la génération (invisible, l'overlay couvre l'écran).
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    window.scrollTo(0, 0);
-    overlay.classList.remove('d-none');
-    container.style.display = 'block';
-
-    const filename = `constat-effectifs_${(row.uai || uuid).toString().replace(/[^\w-]+/g, '_')}.pdf`;
-    try {
-        await html2pdf().from(container).set({
-            filename,
-            margin: 10,
-            // scale > 1 : sans ça le rendu est capturé à la résolution CSS (~96dpi)
-            // et paraît flou une fois étiré dans le PDF.
-            html2canvas: { scale: 2 },
-        }).save();
-    } finally {
-        container.style.display = 'none';
-        overlay.classList.add('d-none');
-        window.scrollTo(scrollX, scrollY);
-    }
+    // #pdfTemplate n'est affiché qu'en impression (@media print) : texte natif
+    // sélectionnable, police Marianne déjà chargée par le CSS de la page.
+    window.print();
 }
 
 $('btnDownloadPdf').addEventListener('click', async (e) => {
@@ -779,12 +762,12 @@ $('btnDownloadPdf').addEventListener('click', async (e) => {
     const originalLabel = btn.innerHTML;
     btn.classList.add('disabled');
     btn.setAttribute('aria-disabled', 'true');
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Génération du fichier…';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Préparation…';
 
     try {
-        await downloadEffectifsPdf(getUUID());
+        await printEffectifsPdf(getUUID());
     } catch (err) {
-        announce("Erreur lors du téléchargement du fichier : " + err.message);
+        announce("Erreur lors de la préparation du document : " + err.message);
     } finally {
         btn.classList.remove('disabled');
         btn.removeAttribute('aria-disabled');
