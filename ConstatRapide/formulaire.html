@@ -220,6 +220,52 @@ button:focus-visible {
     white-space: nowrap;
 }
 
+#pdfTemplate {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    width: 700px;
+    background: #fff;
+    color: #161616;
+    font-family: Arial, sans-serif;
+    padding: 24px;
+}
+
+#pdfTemplate h1 {
+    font-size: 18px;
+    color: var(--blue-france-main-525);
+    margin: 0 0 8px;
+}
+
+#pdfTemplate p {
+    margin: 2px 0;
+    font-size: 13px;
+}
+
+#pdfTemplate table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+}
+
+#pdfTemplate th,
+#pdfTemplate td {
+    border: 1px solid #333;
+    padding: 6px 10px;
+    text-align: center;
+    font-size: 13px;
+}
+
+#pdfTemplate th {
+    background: var(--background-alt-blue-france);
+}
+
+#pdfTemplate .pdf-total {
+    text-align: right;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
 /* Responsive fidelity preserved from original */
 /* ─────────────────────────────────────
    Layout responsive avec sidebar fixe
@@ -550,8 +596,8 @@ button:focus-visible {
                 <h3 class="h5 fw-semibold">Effectifs enregistrés</h3>
                 <p class="text-muted mb-0">Les données ont bien été transmises.<br/>
 					Vous recevrez également un e-mail récapitulant les effectifs saisis.</p>
-                <a href="#" id="btnDownloadXlsx" class="btn btn-outline-primary mt-3">
-                    <i class="fas fa-file-excel me-2" aria-hidden="true"></i>Télécharger le tableau (.xlsx)
+                <a href="#" id="btnDownloadPdf" class="btn btn-outline-primary mt-3">
+                    <i class="fas fa-file-pdf me-2" aria-hidden="true"></i>Télécharger le tableau (.pdf)
                 </a>
             </div>
 
@@ -575,10 +621,16 @@ button:focus-visible {
 <div id="liveRegion" role="status" aria-live="polite" aria-atomic="true"
      style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;"></div>
 
+<!-- Gabarit hors-écran utilisé pour générer le PDF -->
+<div id="pdfTemplate" aria-hidden="true"></div>
+
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
         crossorigin="anonymous"></script>
+
+<!-- html2pdf.js (export .pdf côté client) -->
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -596,10 +648,6 @@ const CONFIG = {
     //                    TPS_ULIS?, PS_ULIS?, ... CM2_ULIS? }
     // Les champs laissés vides ne sont PAS inclus dans le payload.
     webhookSubmit: 'https://n8n.incubateur.education.gouv.fr/webhook-test/8ce18bbf-0123-4a11-a0ff-dda673441b25',
-
-    // Webhook n8n : génère et renvoie le fichier .xlsx (état complet de la table pour l'UUID)
-    // → Dans n8n : Webhook (POST) → lecture Grist → génération .xlsx → réponse binaire
-    webhookExport: 'https://n8n.incubateur.education.gouv.fr/webhook-test/a3f024ed-9322-4259-80c3-9160c8345ac8',
 };
 // ══════════════════════════════════════════════════════════════
 
@@ -614,45 +662,68 @@ function announce(msg) {
 // ── Données école (pour les inclure dans le payload) ──
 let ecoleData = {};
 
-// ── Export .xlsx (généré côté n8n à partir de l'état actuel de la table) ──
-function parseFilenameFromContentDisposition(header) {
-    if (!header) return null;
-    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
-    return match ? decodeURIComponent(match[1]) : null;
+// ── Export .pdf (généré côté client à partir de l'état actuel de la table) ──
+function buildPdfHtml(row) {
+    const dateFormatee = new Date().toLocaleDateString('fr-FR');
+    const nomEcole = [row.sigle, row.ecole_nom].filter(Boolean).join(' ');
+
+    return `
+        <h1>Constat rapide de rentrée ${row.rentree || ''}</h1>
+        <p>${nomEcole}, ${row.commune || ''} (${row.uai || ''})</p>
+        <p>Circonscription : ${row.circonscription || ''}</p>
+        <p>Etat en date du ${dateFormatee}</p>
+        <table>
+            <thead>
+                <tr><th></th><th>TPS</th><th>PS</th><th>MS</th><th>GS</th><th>Sous-total Préélém</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total</td>
+                    <td>${row.TPS ?? 0}</td><td>${row.PS ?? 0}</td><td>${row.MS ?? 0}</td><td>${row.GS ?? 0}</td>
+                    <td>${row.Total_Preelem ?? 0}</td>
+                </tr>
+            </tbody>
+        </table>
+        <table>
+            <thead>
+                <tr><th></th><th>CP</th><th>CE1</th><th>CE2</th><th>CM1</th><th>CM2</th><th>Sous-total Élém</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total</td>
+                    <td>${row.CP ?? 0}</td><td>${row.CE1 ?? 0}</td><td>${row.CE2 ?? 0}</td><td>${row.CM1 ?? 0}</td><td>${row.CM2 ?? 0}</td>
+                    <td>${row.Total_Elem ?? 0}</td>
+                </tr>
+                <tr>
+                    <td>Dont ULIS</td>
+                    <td>${row.CP_ULIS ?? 0}</td><td>${row.CE1_ULIS ?? 0}</td><td>${row.CE2_ULIS ?? 0}</td><td>${row.CM1_ULIS ?? 0}</td><td>${row.CM2_ULIS ?? 0}</td>
+                    <td>${row.Total_ULIS ?? 0}</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="pdf-total">Total élèves : ${row.Total_Eleves ?? 0}</p>
+    `;
 }
 
-async function downloadEffectifsXlsx(uuid) {
-    const res = await fetch(CONFIG.webhookExport, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uuid }),
-    });
-    if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+async function downloadEffectifsPdf(uuid) {
+    const row = await fetchEcoleData(uuid);
+    const container = $('pdfTemplate');
+    container.innerHTML = buildPdfHtml(row);
 
-    const blob = await res.blob();
-    const filename = parseFilenameFromContentDisposition(res.headers.get('Content-Disposition'))
-        || `constat-effectifs_${uuid}.xlsx`;
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const filename = `constat-effectifs_${(row.uai || uuid).toString().replace(/[^\w-]+/g, '_')}.pdf`;
+    await html2pdf().from(container).set({ filename, margin: 10 }).save();
 }
 
-$('btnDownloadXlsx').addEventListener('click', async (e) => {
+$('btnDownloadPdf').addEventListener('click', async (e) => {
     e.preventDefault();
-    const btn = $('btnDownloadXlsx');
+    const btn = $('btnDownloadPdf');
     const originalLabel = btn.innerHTML;
     btn.classList.add('disabled');
     btn.setAttribute('aria-disabled', 'true');
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Génération du fichier…';
 
     try {
-        await downloadEffectifsXlsx(getUUID());
+        await downloadEffectifsPdf(getUUID());
     } catch (err) {
         announce("Erreur lors du téléchargement du fichier : " + err.message);
     } finally {
