@@ -218,6 +218,22 @@ button:focus-visible {
     opacity: .7;
 }
 
+/* #btnDownloadPdf explicite : le survol par défaut de .btn-outline-primary
+   (inversion de couleurs) est cassé par le CSS du DSFR chargé sur la page
+   (le texte passe en blanc mais le fond reste transparent, texte invisible) */
+#btnDownloadPdf {
+    color: var(--blue-france-main-525);
+    background: transparent;
+    border-color: var(--blue-france-main-525);
+}
+
+#btnDownloadPdf:hover,
+#btnDownloadPdf:focus {
+    color: var(--text-mention-grey);
+    background: transparent;
+    border-color: var(--text-mention-grey);
+}
+
 #successBlock {
     border: 1px solid #b8fec9;
     background: #f3fdeb;
@@ -252,12 +268,27 @@ button:focus-visible {
 #pdfTemplate h2 {
     font-size: 14px;
     color: var(--blue-france-main-525);
-    margin: 14px 0 4px;
+    margin: 14px 0 2px;
+}
+
+#pdfTemplate h2 + table {
+    margin-top: 6px;
 }
 
 #pdfTemplate p {
     margin: 2px 0;
     font-size: 13px;
+}
+
+#pdfTemplate .pdf-infos {
+    border: 1px solid var(--border-default-grey);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 8px 0 14px;
+}
+
+#pdfTemplate .pdf-infos p {
+    margin: 2px 0;
 }
 
 #pdfTemplate .pdf-ecole {
@@ -267,6 +298,10 @@ button:focus-visible {
 
 #pdfTemplate .pdf-circo {
     margin-top: 0;
+}
+
+#pdfTemplate .pdf-date {
+    font-style: italic;
 }
 
 #pdfTemplate table {
@@ -287,6 +322,11 @@ button:focus-visible {
 
 #pdfTemplate th {
     background: var(--background-alt-blue-france);
+}
+
+#pdfTemplate thead th:first-child {
+    border: none;
+    background: transparent;
 }
 
 #pdfTemplate td:last-child {
@@ -648,7 +688,10 @@ button:focus-visible {
                    style="font-size: 2.5rem;" aria-hidden="true"></i>
                 <h3 class="h5 fw-semibold">Effectifs enregistrés</h3>
                 <p class="text-muted mb-0"><strong>Les données ont bien été transmises.</strong></p>
-				<p class="text-muted mt-2 mb-0">Vous pouvez récupérer les effectifs saisis :</p>
+            </div>
+
+            <div id="successDownload" class="d-none text-center py-3">
+                <p class="text-muted mb-0">Vous pouvez récupérer les effectifs saisis :</p>
                 <a href="#" id="btnDownloadPdf" class="btn btn-outline-primary mt-3">
                     <i class="fas fa-file-pdf me-2" aria-hidden="true"></i>Imprimer / Enregistrer en PDF
                 </a>
@@ -746,9 +789,11 @@ function buildPdfHtml(row) {
 
     return `
         <h1>Constat rapide de rentrée ${row.rentree || ''}</h1>
-        <p class="pdf-ecole">${nomEcole}, ${commune} (${uai})</p>
-        <p class="pdf-circo">Circonscription : ${row.circonscription || ''}</p>
-        <p>Etat en date du ${row.Date_formatee || ''}</p>
+        <div class="pdf-infos">
+            <p class="pdf-ecole">${nomEcole}, ${commune} (${uai})</p>
+            <p class="pdf-circo">Circonscription : ${row.circonscription || ''}</p>
+            <p class="pdf-date">Etat en date du ${row.Date_formatee || ''}</p>
+        </div>
         <h2>Nombre d'élèves en préélémentaire</h2>
         <table>
             ${PDF_COLGROUP}
@@ -782,7 +827,7 @@ function buildPdfHtml(row) {
                 </tr>
             </tbody>
         </table>
-        <p class="pdf-total">Total élèves : ${row.Total_Eleves ?? 0}</p>
+        <p class="pdf-total">Total : ${row.Total_Eleves ?? 0} élèves</p>
     `;
 }
 
@@ -990,6 +1035,7 @@ $('effectifsForm').addEventListener('submit', async (e) => {
         // Succès
         $('effectifsForm').classList.add('d-none');
         $('successBlock').classList.remove('d-none');
+        $('successDownload').classList.remove('d-none');
         $('successBlock').focus();
         announce("Effectifs enregistrés avec succès.");
 
