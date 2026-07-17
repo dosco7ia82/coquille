@@ -1096,7 +1096,7 @@ $('effectifsForm').addEventListener('submit', async (e) => {
 window.addEventListener('DOMContentLoaded', async () => {
     const uuid = getUUID();
     if (!uuid) {
-        showLoadError("Aucun UUID trouvé dans l'URL. Ajoutez ?uuid=VOTRE_UUID à l'URL.");
+        showLoadError("Votre lien de connexion n'est pas valide.");
         return;
     }
     try {
@@ -1118,10 +1118,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                 $('campagne-info').classList.remove('d-none');
             }
         } else {
-            showLoadError("Aucune donnée trouvée pour cet UUID.");
+            showLoadError("Votre lien de connexion n'est pas valide.");
         }
     } catch (err) {
-        showLoadError(`Impossible de charger les données : ${err.message}`);
+        console.error("Erreur de chargement des données école :", err);
+        showLoadError("Votre lien de connexion n'est pas valide.");
     }
 });
 </script>
