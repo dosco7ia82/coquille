@@ -1101,7 +1101,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     try {
         const data = await fetchEcoleData(uuid);
-        if (data) {
+        const ecoleTrouvee = data && (data.uai || data.UAI);
+        if (ecoleTrouvee) {
             ecoleData = data;
             applyCampagneInfo(data);
 
