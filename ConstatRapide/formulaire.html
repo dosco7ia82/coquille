@@ -5,6 +5,7 @@
 	<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Constat rapide de rentrée</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
 
     <!-- Bootstrap Grid + DSFR -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -759,21 +760,14 @@ button:focus-visible {
 // ⚙️  CONFIGURATION — À PERSONNALISER
 // ══════════════════════════════════════════════════════════════
 const CONFIG = {
-    // Webhook n8n : récupération des infos école à partir de l'UUID
-    // → Dans n8n : Webhook (POST) → HTTP Request vers Grist (GET /records?filter=...)
+    // Récupération des infos école à partir de l'UUID
     webhookFetch:  'https://n8n.incubateur.education.gouv.fr/webhook/32a6f3ca-7e84-450c-bed8-99ac52cf79ff',
 
-    // Webhook n8n : envoi des effectifs vers Grist
-    // → Dans n8n : Webhook (POST) → HTTP Request vers Grist (POST /records)
-    // Payload envoyé : { uuid, uai, commune, sigle, annee_scolaire, timestamp,
-    //                    TPS?, PS?, MS?, GS?, CP?, CE1?, CE2?, CM1?, CM2?,
-    //                    TPS_ULIS?, PS_ULIS?, ... CM2_ULIS? }
+    // Envoi des effectifs saisis
     // Les champs laissés vides ne sont PAS inclus dans le payload.
     webhookSubmit: 'https://n8n.incubateur.education.gouv.fr/webhook/8ce18bbf-0123-4a11-a0ff-dda673441b25',
 
-    // Webhook n8n : données structurées pour l'export .pdf (contrat de clés propres
-    // uai, sigle, ecole_nom, commune, circonscription, rentree, TPS…CM2, *_ULIS,
-    // Total_Preelem, Total_Elem, Total_ULIS, Total_Eleves)
+    // Données pour l'export .pdf
     webhookPdfData: 'https://n8n.incubateur.education.gouv.fr/webhook/a3f024ed-9322-4259-80c3-9160c8345ac8',
 };
 // ══════════════════════════════════════════════════════════════
@@ -809,8 +803,7 @@ const PDF_COLGROUP = `
 `;
 
 function buildPdfHtml(row) {
-    // Filet de sécurité si le webhook renvoie encore d'anciens noms Grist pour ces
-    // trois champs (déjà gérés par displayEcoleData()).
+    // Filet de sécurité si le webhook renvoie encore d'anciens noms de champs.
     const uai     = (row.uai || row.UAI || '').toUpperCase();
     const sigle   = row.sigle   || row.UAI_ecole_sigle   || row.uai_ecole_sigle   || '';
     const commune = row.commune || row.UAI_ecole_commune || row.uai_ecole_commune || '';
