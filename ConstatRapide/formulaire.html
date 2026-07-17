@@ -935,9 +935,10 @@ function displayEcoleData(data) {
     $('ecole-display').innerHTML = html || '<em class="text-muted">Merci d\'utiliser un lien de saisie valide.</em>';
 }
 
-function showLoadError(msg) {
+function showLoadError(msg, redText = false) {
     $('ecole-display').innerHTML = '<span class="text-danger">—</span>';
     $('error-message').textContent = msg;
+    $('error-message').style.color = redText ? 'var(--error-425)' : '';
     $('error-alert').classList.remove('d-none');
 }
 
@@ -1119,7 +1120,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             applyCampagneInfo(data);
 
             if (data.campagne_statut === 'a_venir') {
-                showLoadError(`Une campagne de saisie est programmée à partir du ${formatDateHeure(data.Date_debut)}.`);
+                showLoadError(`Cette campagne de saisie ouvrira à partir du ${formatDateHeure(data.Date_debut)}.`, true);
                 return;
             }
             if (data.campagne_statut === 'close') {
