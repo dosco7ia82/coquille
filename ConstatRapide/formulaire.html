@@ -759,7 +759,7 @@ button:focus-visible {
 const CONFIG = {
     // Webhook n8n : récupération des infos école à partir de l'UUID
     // → Dans n8n : Webhook (POST) → HTTP Request vers Grist (GET /records?filter=...)
-    webhookFetch:  'https://n8n.incubateur.education.gouv.fr/webhook/32a6f3ca-7e84-450c-bed8-99ac52cf79ff',
+    webhookFetch:  'https://n8n.incubateur.education.gouv.fr/webhook-test/32a6f3ca-7e84-450c-bed8-99ac52cf79ff',
 
     // Webhook n8n : envoi des effectifs vers Grist
     // → Dans n8n : Webhook (POST) → HTTP Request vers Grist (POST /records)
@@ -767,12 +767,12 @@ const CONFIG = {
     //                    TPS?, PS?, MS?, GS?, CP?, CE1?, CE2?, CM1?, CM2?,
     //                    TPS_ULIS?, PS_ULIS?, ... CM2_ULIS? }
     // Les champs laissés vides ne sont PAS inclus dans le payload.
-    webhookSubmit: 'https://n8n.incubateur.education.gouv.fr/webhook/8ce18bbf-0123-4a11-a0ff-dda673441b25',
+    webhookSubmit: 'https://n8n.incubateur.education.gouv.fr/webhook-test/8ce18bbf-0123-4a11-a0ff-dda673441b25',
 
     // Webhook n8n : données structurées pour l'export .pdf (contrat de clés propres
     // uai, sigle, ecole_nom, commune, circonscription, rentree, TPS…CM2, *_ULIS,
     // Total_Preelem, Total_Elem, Total_ULIS, Total_Eleves)
-    webhookPdfData: 'https://n8n.incubateur.education.gouv.fr/webhook/a3f024ed-9322-4259-80c3-9160c8345ac8',
+    webhookPdfData: 'https://n8n.incubateur.education.gouv.fr/webhook-test/a3f024ed-9322-4259-80c3-9160c8345ac8',
 };
 // ══════════════════════════════════════════════════════════════
 
