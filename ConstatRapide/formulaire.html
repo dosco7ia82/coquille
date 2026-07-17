@@ -1101,10 +1101,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     try {
         const data = await fetchEcoleData(uuid);
-        if (data) {
+        const ecoleTrouvee = data && (data.uai || data.UAI);
+        if (ecoleTrouvee) {
             ecoleData = data;
             applyCampagneInfo(data);
 
+            if (data.campagne_statut === 'a_venir') {
+                showLoadError(`Une campagne de saisie est programmée à partir du ${data.Date_debut || ''}.`);
+                return;
+            }
+            if (data.campagne_statut === 'close') {
+                showLoadError(`La campagne de saisie est close depuis le ${data.Date_fin_ECOLE || ''}. Merci de contacter rapidement votre circonscription.`);
+                return;
+            }
             if (data.campagne_active === false) {
                 showLoadError("Aucune campagne de saisie n'est en cours.");
                 return;
