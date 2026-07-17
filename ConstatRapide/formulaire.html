@@ -489,8 +489,8 @@ button:focus-visible {
             <div class="sidebar-content">
 
                 <div class="mb-5 text-center text-lg-start">
-                    <h1>Constat rapide de rentrée</h1>
-                    <p class="lead text-muted mb-0 lh-base">Rentrée scolaire 2026<br/>
+                    <h1 id="pageTitle">Constat rapide de rentrée</h1>
+                    <p id="pageSubtitle" class="lead text-muted mb-0 lh-base">Rentrée scolaire 2026<br/>
 					Tarn-et-Garonne
 					</p>
                 </div>
@@ -511,6 +511,8 @@ button:focus-visible {
                         </p>
                     </div>
                 </div>
+
+                <p id="campagne-info" class="text-muted d-none"></p>
 
             </div>
         </aside>
@@ -901,6 +903,18 @@ async function fetchEcoleData(uuid) {
     return await res.json();
 }
 
+function applyCampagneInfo(data) {
+    if (data.Titre) $('pageTitle').textContent = data.Titre;
+
+    if (data.Sous_titre) {
+        const subtitle = $('pageSubtitle');
+        subtitle.textContent = '';
+        subtitle.appendChild(document.createTextNode(data.Sous_titre));
+        subtitle.appendChild(document.createElement('br'));
+        subtitle.appendChild(document.createTextNode('Tarn-et-Garonne'));
+    }
+}
+
 function displayEcoleData(data) {
     const uai    = (data.uai    || data.UAI    || '').toUpperCase();
     const commune= data.UAI_ecole_commune || data.uai_ecole_commune || '';
@@ -1089,8 +1103,20 @@ window.addEventListener('DOMContentLoaded', async () => {
         const data = await fetchEcoleData(uuid);
         if (data) {
             ecoleData = data;
+            applyCampagneInfo(data);
+
+            if (data.campagne_active === false) {
+                showLoadError("Aucune campagne de saisie n'est en cours.");
+                return;
+            }
+
             displayEcoleData(data);
             $('btnSubmit').disabled = false;
+
+            if (data.Date_fin_ECOLE) {
+                $('campagne-info').textContent = `Cette campagne de saisie est ouverte jusqu'au ${data.Date_fin_ECOLE}.`;
+                $('campagne-info').classList.remove('d-none');
+            }
         } else {
             showLoadError("Aucune donnée trouvée pour cet UUID.");
         }
