@@ -782,6 +782,12 @@ const CONFIG = {
 const $ = id => document.getElementById(id);
 const liveRegion = $("liveRegion");
 
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+}
+
 function announce(msg) {
     liveRegion.textContent = "";
     requestAnimationFrame(() => { liveRegion.textContent = msg; });
@@ -814,14 +820,19 @@ function buildPdfHtml(row) {
     const uai     = (row.uai || row.UAI || '').toUpperCase();
     const sigle   = row.sigle   || row.UAI_ecole_sigle   || row.uai_ecole_sigle   || '';
     const commune = row.commune || row.UAI_ecole_commune || row.uai_ecole_commune || '';
-    const nomEcole = [sigle, row.ecole_nom].filter(Boolean).join(' ');
+    const nomEcole = escapeHtml([sigle, row.ecole_nom].filter(Boolean).join(' '));
+    const rentree = escapeHtml(row.rentree || '');
+    const communeEsc = escapeHtml(commune);
+    const uaiEsc = escapeHtml(uai);
+    const circonscription = escapeHtml(row.circonscription || '');
+    const dateFormatee = escapeHtml(row.Date_formatee || '');
 
     return `
-        <h1>Constat rapide de rentrée ${row.rentree || ''}</h1>
+        <h1>Constat rapide de rentrée ${rentree}</h1>
         <div class="pdf-infos">
-            <p class="pdf-ecole">${nomEcole}, ${commune} (${uai})</p>
-            <p class="pdf-circo">Circonscription : ${row.circonscription || ''}</p>
-            <p class="pdf-date">Etat en date du ${row.Date_formatee || ''}</p>
+            <p class="pdf-ecole">${nomEcole}, ${communeEsc} (${uaiEsc})</p>
+            <p class="pdf-circo">Circonscription : ${circonscription}</p>
+            <p class="pdf-date">Etat en date du ${dateFormatee}</p>
         </div>
         <h2>Nombre d'élèves en préélémentaire</h2>
         <table>
@@ -939,12 +950,33 @@ function displayEcoleData(data) {
     const commune= data.UAI_ecole_commune || data.uai_ecole_commune || '';
     const sigle  = data.UAI_ecole_sigle   || data.uai_ecole_sigle   || '';
 
-    let html = '';
-    if (sigle)   html += `${sigle}`;
-    if (commune) html += `${sigle ? ' ' : ''}<span>(${commune})</span>`;
-    if (uai)     html += ` <small class="text-muted" style="font-size:0.8em;font-weight:400;">${uai}</small>`;
+    const target = $('ecole-display');
+    target.textContent = '';
 
-    $('ecole-display').innerHTML = html || '<em class="text-muted">Merci d\'utiliser un lien de saisie valide.</em>';
+    if (!sigle && !commune && !uai) {
+        const em = document.createElement('em');
+        em.className = 'text-muted';
+        em.textContent = "Merci d'utiliser un lien de saisie valide.";
+        target.appendChild(em);
+        return;
+    }
+
+    if (sigle) target.appendChild(document.createTextNode(sigle));
+    if (commune) {
+        if (sigle) target.appendChild(document.createTextNode(' '));
+        const span = document.createElement('span');
+        span.textContent = `(${commune})`;
+        target.appendChild(span);
+    }
+    if (uai) {
+        target.appendChild(document.createTextNode(' '));
+        const small = document.createElement('small');
+        small.className = 'text-muted';
+        small.style.fontSize = '0.8em';
+        small.style.fontWeight = '400';
+        small.textContent = uai;
+        target.appendChild(small);
+    }
 }
 
 function showLoadError(msg, redText = false) {
