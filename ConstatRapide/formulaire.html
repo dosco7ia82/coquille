@@ -513,7 +513,7 @@ button:focus-visible {
                     </div>
                 </div>
 
-                <p id="campagne-info" class="text-muted d-none"></p>
+                <p id="campagne-info" class="text-muted fst-italic small mt-3 d-none"></p>
 
             </div>
         </aside>
@@ -886,6 +886,18 @@ function getUUID() {
     return new URLSearchParams(window.location.search).get('uuid');
 }
 
+// Convertit un timestamp (secondes) en date/heure lisible, fuseau Europe/Paris
+function formatDateHeure(ts) {
+    if (!ts) return '';
+    const date = new Date(ts * 1000);
+    if (isNaN(date)) return String(ts);
+    return new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    }).format(date);
+}
+
 async function fetchEcoleData(uuid) {
     const res = await fetch(CONFIG.webhookFetch, {
         method: 'POST',
@@ -1105,11 +1117,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             applyCampagneInfo(data);
 
             if (data.campagne_statut === 'a_venir') {
-                showLoadError(`Une campagne de saisie est programmée à partir du ${data.Date_debut || ''}.`);
+                showLoadError(`Une campagne de saisie est programmée à partir du ${formatDateHeure(data.Date_debut)}.`);
                 return;
             }
             if (data.campagne_statut === 'close') {
-                showLoadError(`La campagne de saisie est close depuis le ${data.Date_fin_ECOLE || ''}. Merci de contacter rapidement votre circonscription.`);
+                showLoadError(`La campagne de saisie est close depuis le ${formatDateHeure(data.Date_fin_ECOLE)}. Merci de contacter rapidement votre circonscription.`);
                 return;
             }
             if (data.campagne_active === false) {
@@ -1121,7 +1133,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             $('btnSubmit').disabled = false;
 
             if (data.Date_fin_ECOLE) {
-                $('campagne-info').textContent = `Cette campagne de saisie est ouverte jusqu'au ${data.Date_fin_ECOLE}.`;
+                $('campagne-info').textContent = `Cette campagne de saisie est ouverte jusqu'au ${formatDateHeure(data.Date_fin_ECOLE)}.`;
                 $('campagne-info').classList.remove('d-none');
             }
         } else {
