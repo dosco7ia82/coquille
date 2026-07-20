@@ -561,7 +561,7 @@ button:focus-visible {
                 </div>
 
                 <!-- ── Carte : Votre école ── -->
-                <div class="card shadow-sm">
+                <div class="card shadow-sm" id="ecoleCard">
                     <div class="card-header bg-secondary text-white">
                         <h2 class="h5 mb-0">
                             <i class="fas fa-school me-2" aria-hidden="true"></i>
@@ -1048,6 +1048,8 @@ function showLoadError(msg, redText = false) {
     $('error-message').textContent = msg;
     $('error-message').style.color = redText ? 'var(--error-425)' : '';
     $('error-alert').classList.remove('d-none');
+    $('ecoleCard').classList.add('d-none');
+    $('formCard').classList.add('d-none');
 }
 
 function showInvalidLink() {
