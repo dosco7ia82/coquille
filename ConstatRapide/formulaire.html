@@ -520,7 +520,11 @@ button:focus-visible {
         <main class="col-12 col-lg-7 col-xl-7 main-content">
             <div class="container py-5 content-container">
 
- 
+    <!-- Alerte erreur chargement école -->
+    <div id="error-alert" class="alert alert-danger d-none mb-4" role="alert">
+        <i class="fas fa-exclamation-triangle me-2" aria-hidden="true"></i>
+        <span id="error-message">Une erreur est survenue.</span>
+    </div>
 
     <!-- ── Carte : Saisie des effectifs ── -->
     <div class="card shadow-sm" id="formCard">
@@ -731,12 +735,6 @@ button:focus-visible {
             </div>
 
         </div>
-    </div>
-
-    <!-- Alerte erreur chargement école -->
-    <div id="error-alert" class="alert alert-danger d-none mt-4" role="alert">
-        <i class="fas fa-exclamation-triangle me-2" aria-hidden="true"></i>
-        <span id="error-message">Une erreur est survenue.</span>
     </div>
 
             </div>
