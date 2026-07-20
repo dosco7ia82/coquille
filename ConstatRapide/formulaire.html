@@ -561,7 +561,7 @@ button:focus-visible {
                 </div>
 
                 <!-- ── Carte : Votre école ── -->
-                <div class="card shadow-sm" id="ecoleCard">
+                <div class="card shadow-sm d-none" id="ecoleCard">
                     <div class="card-header bg-secondary text-white">
                         <h2 class="h5 mb-0">
                             <i class="fas fa-school me-2" aria-hidden="true"></i>
@@ -593,7 +593,7 @@ button:focus-visible {
     </div>
 
     <!-- ── Carte : Saisie des effectifs ── -->
-    <div class="card shadow-sm" id="formCard">
+    <div class="card shadow-sm d-none" id="formCard">
         <div class="card-header bg-primary text-white">
             <h2 class="h5 mb-0">
                 <i class="fas fa-users me-2" aria-hidden="true"></i>Nombre d'élèves par niveau
@@ -1265,6 +1265,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
+            $('ecoleCard').classList.remove('d-none');
+            $('formCard').classList.remove('d-none');
             displayEcoleData(data);
             $('btnSubmit').disabled = false;
 
