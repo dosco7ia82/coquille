@@ -422,6 +422,12 @@ button:focus-visible {
         z-index: 10;
     }
 
+    /* Réserve la place du logo (position fixed) pour qu'il ne recouvre pas
+       le bas du contenu de la sidebar sur les écrans à faible hauteur. */
+    .sidebar-content {
+        padding-bottom: 11rem;
+    }
+
     .main-content {
         margin-left: 25%;
     }
@@ -431,6 +437,52 @@ button:focus-visible {
         padding-right: 2rem;
         margin-left: auto;
         margin-right: auto;
+    }
+}
+
+/* Écrans à faible hauteur (ex. 1366×768) : resserrer les espacements et
+   tailles de texte pour limiter le défilement nécessaire. */
+@media (max-height: 800px) {
+    .content-container.py-5 {
+        padding-top: 1.5rem;
+        padding-bottom: 1.5rem;
+    }
+
+    .sidebar-content {
+        padding-top: 1.25rem;
+    }
+
+    .card-body {
+        padding: 1rem 1.5rem;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+    }
+
+    .lead {
+        font-size: .95rem;
+    }
+
+    .mb-5 {
+        margin-bottom: 1.5rem !important;
+    }
+
+    .section-title {
+        margin-top: .75rem;
+    }
+
+    .ulis-section {
+        margin-top: .75rem;
+        padding: .75rem;
+    }
+
+    #totauxRecap {
+        margin-top: .75rem !important;
+    }
+
+    .btn {
+        min-height: 2.5rem;
     }
 }
 
