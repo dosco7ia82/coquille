@@ -167,7 +167,7 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     fallback.style.display = 'none';
 
     const emails = records
-        .filter(r => r && r[COL_SAISIE] !== true && r[COL_EMAIL])
+        .filter(r => r && r.Etat !== 'Fermee' && r[COL_SAISIE] !== true && r[COL_EMAIL])
         .map(r => `<${r[COL_EMAIL]}>`);
 
     if (emails.length === 0) {
