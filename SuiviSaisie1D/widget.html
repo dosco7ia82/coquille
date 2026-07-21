@@ -208,7 +208,7 @@ async function renderCampagne() {
 
     try {
         const campagnes = await grist.docApi.fetchTable('Campagnes_de_saisie');
-        const idx = campagnes.id.indexOf(idCampagne);
+        const idx = campagnes.ID_campagne.indexOf(idCampagne);
         if (idx === -1) {
             container.textContent = '';
             return;
