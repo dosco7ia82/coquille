@@ -188,6 +188,34 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     }
 });
 
+const EXPORT_HIDDEN_COLUMNS = [
+    'Etat2', 'ID_campagne', 'Secteur', 'Cree_le', 'Cree_par',
+    'Derniere_mise_a_jour', 'UUID', 'Ecole_nom_complet', 'Data_campagne', 'id',
+    'TPS_ULIS', 'PS_ULIS', 'MS_ULIS', 'GS_ULIS', 'manualSort',
+];
+
+function moveAfter(order, colsToMove, afterCol) {
+    const remaining = order.filter(c => !colsToMove.includes(c));
+    const idx = remaining.indexOf(afterCol);
+    if (idx === -1) return order;
+    return [
+        ...remaining.slice(0, idx + 1),
+        ...colsToMove,
+        ...remaining.slice(idx + 1),
+    ];
+}
+
+function buildExportColumnOrder(rawColumns) {
+    let order = rawColumns.filter(c => !EXPORT_HIDDEN_COLUMNS.includes(c));
+    order = moveAfter(order, ['Circo', 'UAI', 'Sigle', 'Denomination', 'Commune'], 'Rentree_scolaire');
+    order = moveAfter(order, ['Total_Preelem'], 'GS');
+    order = moveAfter(order, ['Total_Elem'], 'CM2');
+    order = moveAfter(order, ['Total_eleves_ULIS_inclus'], 'Total_Elem');
+    order = moveAfter(order, ['Total_eleves_hors_ULIS'], 'Total_eleves_ULIS_inclus');
+    order = moveAfter(order, ['Total_eleves_ULIS_uniquement'], 'Total_eleves_hors_ULIS');
+    return order;
+}
+
 document.getElementById('downloadBtn').addEventListener('click', async () => {
     const feedback = document.getElementById('downloadFeedback');
     const btn = document.getElementById('downloadBtn');
@@ -197,19 +225,20 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 
     try {
         const table = await grist.fetchSelectedTable({ includeColumns: 'normal' });
-        const columnNames = Object.keys(table).filter(name => name !== 'manualSort');
+        const columnOrder = buildExportColumnOrder(Object.keys(table));
         const rowCount = table.id.length;
 
         const rows = [];
         for (let i = 0; i < rowCount; i++) {
+            if (table.Etat[i] !== 'Ouverte') continue;
             const row = {};
-            for (const name of columnNames) {
+            for (const name of columnOrder) {
                 row[name] = table[name][i];
             }
             rows.push(row);
         }
 
-        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const worksheet = XLSX.utils.json_to_sheet(rows, { header: columnOrder });
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Effectifs');
 
