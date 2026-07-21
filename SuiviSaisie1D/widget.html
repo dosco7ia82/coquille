@@ -33,6 +33,14 @@ body {
     font-family: Marianne, Arial, sans-serif;
     color: #161616;
 }
+.campagne-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-default-grey);
+}
+.campagne-section p {
+    margin: .2rem 0;
+}
 .columns {
     display: flex;
     flex-wrap: wrap;
@@ -96,6 +104,11 @@ button:disabled {
 </head>
 <body>
 
+<div class="campagne-section">
+    <h2>Campagne de saisie</h2>
+    <div id="campagneInfo">Chargement…</div>
+</div>
+
 <div class="columns">
 
     <div class="column">
@@ -131,7 +144,49 @@ grist.ready({
 grist.onRecords((data) => {
     records = data || [];
     render();
+    renderCampagne();
 });
+
+function formatDateHeure(ts) {
+    if (!ts) return '';
+    const date = new Date(ts * 1000);
+    if (isNaN(date)) return String(ts);
+    const datePart = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric',
+    }).format(date);
+    const timePart = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit',
+    }).format(date).replace(':', 'h');
+    return `${datePart} à ${timePart}`;
+}
+
+async function renderCampagne() {
+    const container = document.getElementById('campagneInfo');
+    const idCampagne = records.map(r => r && r.ID_campagne).find(v => v !== undefined && v !== null);
+
+    if (idCampagne === undefined) {
+        container.textContent = '';
+        return;
+    }
+
+    try {
+        const campagnes = await grist.docApi.fetchTable('Campagnes_de_saisie');
+        const idx = campagnes.id.indexOf(idCampagne);
+        if (idx === -1) {
+            container.textContent = '';
+            return;
+        }
+
+        container.innerHTML = `
+            <p>Date et heure de début : ${formatDateHeure(campagnes.Date_debut[idx])}</p>
+            <p>Date et heure de fin (Écoles) : ${formatDateHeure(campagnes.Date_fin_ECOLE[idx])}</p>
+            <p>Date et heure de fin (Circos) : ${formatDateHeure(campagnes.Date_fin_CIRCO[idx])}</p>
+            <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
+        `;
+    } catch (err) {
+        container.textContent = 'Erreur de chargement des dates de campagne.';
+    }
+}
 
 function formatPourcentage(done, total) {
     if (total === 0) return '0 %';
@@ -143,8 +198,9 @@ function formatPourcentage(done, total) {
 }
 
 function render() {
-    const total = records.length;
-    const done = records.filter(r => r && r[COL_SAISIE] === true).length;
+    const ecolesOuvertes = records.filter(r => r && r.Etat !== 'Fermee');
+    const total = ecolesOuvertes.length;
+    const done = ecolesOuvertes.filter(r => r[COL_SAISIE] === true).length;
 
     const doneEcole = done <= 1 ? 'école' : 'écoles';
     const doneVerbe = done <= 1 ? 'a saisi' : 'ont saisi';
@@ -166,7 +222,7 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     fallback.style.display = 'none';
 
     const emails = records
-        .filter(r => r && r[COL_SAISIE] !== true && r[COL_EMAIL])
+        .filter(r => r && r.Etat !== 'Fermee' && r[COL_SAISIE] !== true && r[COL_EMAIL])
         .map(r => `<${r[COL_EMAIL]}>`);
 
     if (emails.length === 0) {
@@ -188,6 +244,34 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     }
 });
 
+const EXPORT_HIDDEN_COLUMNS = [
+    'Etat2', 'ID_campagne', 'Secteur', 'Cree_le', 'Cree_par',
+    'Derniere_mise_a_jour', 'UUID', 'Ecole_nom_complet', 'Data_campagne', 'id',
+    'TPS_ULIS', 'PS_ULIS', 'MS_ULIS', 'GS_ULIS', 'manualSort',
+];
+
+function moveAfter(order, colsToMove, afterCol) {
+    const remaining = order.filter(c => !colsToMove.includes(c));
+    const idx = remaining.indexOf(afterCol);
+    if (idx === -1) return order;
+    return [
+        ...remaining.slice(0, idx + 1),
+        ...colsToMove,
+        ...remaining.slice(idx + 1),
+    ];
+}
+
+function buildExportColumnOrder(rawColumns) {
+    let order = rawColumns.filter(c => !EXPORT_HIDDEN_COLUMNS.includes(c));
+    order = moveAfter(order, ['Circo', 'UAI', 'Sigle', 'Denomination', 'Commune'], 'Rentree_scolaire');
+    order = moveAfter(order, ['Total_Preelem'], 'GS');
+    order = moveAfter(order, ['Total_Elem'], 'CM2');
+    order = moveAfter(order, ['Total_eleves_ULIS_inclus'], 'Total_Elem');
+    order = moveAfter(order, ['Total_eleves_hors_ULIS'], 'Total_eleves_ULIS_inclus');
+    order = moveAfter(order, ['Total_eleves_ULIS_uniquement'], 'Total_eleves_hors_ULIS');
+    return order;
+}
+
 document.getElementById('downloadBtn').addEventListener('click', async () => {
     const feedback = document.getElementById('downloadFeedback');
     const btn = document.getElementById('downloadBtn');
@@ -197,19 +281,20 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 
     try {
         const table = await grist.fetchSelectedTable({ includeColumns: 'normal' });
-        const columnNames = Object.keys(table).filter(name => name !== 'manualSort');
+        const columnOrder = buildExportColumnOrder(Object.keys(table));
         const rowCount = table.id.length;
 
         const rows = [];
         for (let i = 0; i < rowCount; i++) {
+            if (table.Etat[i] !== 'Ouverte') continue;
             const row = {};
-            for (const name of columnNames) {
+            for (const name of columnOrder) {
                 row[name] = table[name][i];
             }
             rows.push(row);
         }
 
-        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const worksheet = XLSX.utils.json_to_sheet(rows, { header: columnOrder });
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Effectifs');
 
