@@ -130,6 +130,13 @@ button:disabled {
 const COL_SAISIE = 'Saisie_completee';
 const COL_EMAIL = 'email_ecole';
 
+// Webhook n8n : renvoie les dates d'une campagne à partir de son ID_campagne.
+// Utilisé plutôt qu'un accès Grist direct, pour que les rôles n'ayant pas
+// accès à Campagnes_de_saisie voient quand même ces dates dans le widget.
+const CONFIG = {
+    webhookCampagne: 'URL_A_REMPLACER',
+};
+
 // Toute lecture passe par fetchSelectedTable() : onRecords() ne renvoie que
 // les colonnes visibles dans la vue liée, ce qui masque des champs comme
 // Etat ou ID_campagne quand ils sont cachés côté Grist.
@@ -137,7 +144,7 @@ let tableData = null;
 let rows = [];
 
 grist.ready({
-    requiredAccess: 'full',
+    requiredAccess: 'read table',
 });
 
 grist.onRecords(() => {
@@ -207,17 +214,23 @@ async function renderCampagne() {
     }
 
     try {
-        const campagnes = await grist.docApi.fetchTable('Campagnes_de_saisie');
-        const idx = campagnes.ID_campagne.indexOf(idCampagne);
-        if (idx === -1) {
+        const res = await fetch(CONFIG.webhookCampagne, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_campagne: idCampagne }),
+        });
+        if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+        const campagne = await res.json();
+
+        if (!campagne || !campagne.Date_debut) {
             container.textContent = '';
             return;
         }
 
         container.innerHTML = `
-            <p>Date et heure de début : ${formatDateHeure(campagnes.Date_debut[idx])}</p>
-            <p>Date et heure de fin (Écoles) : ${formatDateHeure(campagnes.Date_fin_ECOLE[idx])}</p>
-            <p>Date et heure de fin (Circos) : ${formatDateHeure(campagnes.Date_fin_CIRCO[idx])}</p>
+            <p>Date et heure de début : ${formatDateHeure(campagne.Date_debut)}</p>
+            <p>Date et heure de fin (Écoles) : ${formatDateHeure(campagne.Date_fin_ECOLE)}</p>
+            <p>Date et heure de fin (Circos) : ${formatDateHeure(campagne.Date_fin_CIRCO)}</p>
             <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
         `;
     } catch (err) {
