@@ -101,13 +101,27 @@ grist.onRecords((data, mappings) => {
     render();
 });
 
+function formatPourcentage(done, total) {
+    if (total === 0) return '0 %';
+    const raw = (done / total) * 100;
+    if (raw > 0 && raw < 1) {
+        return `${raw.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+    }
+    return `${Math.round(raw)} %`;
+}
+
 function render() {
     const total = records.length;
     const done = records.filter(r => r && r.Saisie_completee === true).length;
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    const doneEcole = done <= 1 ? 'école' : 'écoles';
+    const doneVerbe = done <= 1 ? 'a saisi' : 'ont saisi';
+    const donePossessif = done <= 1 ? 'ses' : 'leurs';
+    const totalEcole = total <= 1 ? 'école' : 'écoles';
+    const pct = formatPourcentage(done, total);
 
     document.getElementById('summary').innerHTML =
-        `<strong>${done}</strong> écoles ont saisi leurs effectifs, sur <strong>${total}</strong> écoles, soit <strong>${pct} %</strong>.`;
+        `<strong>${done}</strong> ${doneEcole} ${doneVerbe} ${donePossessif} effectifs, sur <strong>${total}</strong> ${totalEcole}, soit <strong>${pct}</strong>.`;
 
     document.getElementById('copyBtn').disabled = total === 0;
 }
