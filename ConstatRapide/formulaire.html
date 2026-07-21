@@ -1015,8 +1015,8 @@ function applyCampagneInfo(data) {
 
 function displayEcoleData(data) {
     const uai    = (data.uai    || data.UAI    || '').toUpperCase();
-    const commune= data.UAI_ecole_commune || data.uai_ecole_commune || '';
-    const sigle  = data.UAI_ecole_sigle   || data.uai_ecole_sigle   || '';
+    const commune= data.Commune || data.UAI_ecole_commune || data.uai_ecole_commune || '';
+    const sigle  = data.Sigle   || data.UAI_ecole_sigle   || data.uai_ecole_sigle   || '';
 
     const target = $('ecole-display');
     target.textContent = '';
@@ -1162,8 +1162,8 @@ function buildPayload(uuid) {
     const payload = {
         uuid,
         uai:          ecoleData.uai    || ecoleData.UAI    || "",
-        commune:      ecoleData.UAI_ecole_commune || ecoleData.uai_ecole_commune || "",
-        sigle:        ecoleData.UAI_ecole_sigle   || ecoleData.uai_ecole_sigle   || "",
+        commune:      ecoleData.Commune || ecoleData.UAI_ecole_commune || ecoleData.uai_ecole_commune || "",
+        sigle:        ecoleData.Sigle   || ecoleData.UAI_ecole_sigle   || ecoleData.uai_ecole_sigle   || "",
         annee_scolaire: getAnneeScolaire(),
         timestamp:    now.toISOString(),   // ex. "2025-09-02T08:34:12.000Z"
         source:       getSource(),
