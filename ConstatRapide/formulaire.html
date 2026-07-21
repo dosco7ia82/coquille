@@ -973,6 +973,10 @@ function getUUID() {
     return new URLSearchParams(window.location.search).get('uuid');
 }
 
+function getSource() {
+    return new URLSearchParams(window.location.search).get('source') || '';
+}
+
 // Convertit un timestamp (secondes) en date/heure lisible, fuseau Europe/Paris
 function formatDateHeure(ts) {
     if (!ts) return '';
@@ -1162,6 +1166,7 @@ function buildPayload(uuid) {
         sigle:        ecoleData.UAI_ecole_sigle   || ecoleData.uai_ecole_sigle   || "",
         annee_scolaire: getAnneeScolaire(),
         timestamp:    now.toISOString(),   // ex. "2025-09-02T08:34:12.000Z"
+        source:       getSource(),
     };
 
     document.querySelectorAll('#effectifsForm input[type="number"]').forEach(inp => {
