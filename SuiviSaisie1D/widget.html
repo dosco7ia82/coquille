@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi de la saisie</title>
+<!--
+  ============================================================
+  Widget personnalisé Grist (Custom Widget).
+  À ajouter via : Add Widget → Custom → URL de cette page, puis
+  lier le widget à la vue voulue ("Select by") pour qu'il ne
+  reçoive que les lignes filtrées/visibles de cette vue.
+  Au premier chargement, Grist demande de faire correspondre les
+  colonnes "Saisie complétée" et "Adresse e-mail école" avec les
+  colonnes réelles de la table.
+  ============================================================
+-->
+<script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<style>
+:root {
+    --blue-france-main-525: #000091;
+    --error-425: #ce0500;
+    --success-425: #18753c;
+    --text-mention-grey: #666666;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 1rem;
+    font-family: Marianne, Arial, sans-serif;
+    color: #161616;
+}
+#summary {
+    font-size: 1.05rem;
+    margin-bottom: 1.25rem;
+}
+#summary strong {
+    color: var(--blue-france-main-525);
+}
+h2 {
+    font-size: .95rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-mention-grey);
+    margin: 0 0 .6rem;
+}
+button {
+    background: var(--blue-france-main-525);
+    color: #fff;
+    border: none;
+    border-radius: .25rem;
+    padding: .6rem 1.2rem;
+    font-weight: 700;
+    font-size: .95rem;
+    cursor: pointer;
+}
+button:disabled {
+    opacity: .5;
+    cursor: default;
+}
+#copyFeedback {
+    margin-left: .75rem;
+    font-size: .9rem;
+    color: var(--success-425);
+}
+#copyFeedback.error {
+    color: var(--error-425);
+}
+#emailsFallback {
+    display: none;
+    margin-top: .75rem;
+    width: 100%;
+    font-family: monospace;
+    font-size: .85rem;
+    padding: .5rem;
+}
+</style>
+</head>
+<body>
+
+<div id="summary">Chargement…</div>
+
+<h2>Relancer les écoles qui n'ont pas encore saisi</h2>
+<button id="copyBtn" disabled>Copier les adresses e-mail</button>
+<span id="copyFeedback"></span>
+<textarea id="emailsFallback" rows="3" readonly></textarea>
+
+<script>
+let records = [];
+
+grist.ready({
+    columns: [
+        { name: 'Saisie_completee', title: 'Saisie complétée', type: 'Bool' },
+        { name: 'adresse_ecole', title: 'Adresse e-mail école', type: 'Text' },
+    ],
+    requiredAccess: 'read table',
+});
+
+grist.onRecords((data, mappings) => {
+    records = grist.mapColumnNames(data, mappings) || [];
+    render();
+});
+
+function render() {
+    const total = records.length;
+    const done = records.filter(r => r && r.Saisie_completee === true).length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    document.getElementById('summary').innerHTML =
+        `<strong>${done}</strong> écoles ont saisi leurs effectifs, sur <strong>${total}</strong> écoles, soit <strong>${pct} %</strong>.`;
+
+    document.getElementById('copyBtn').disabled = total === 0;
+}
+
+document.getElementById('copyBtn').addEventListener('click', async () => {
+    const feedback = document.getElementById('copyFeedback');
+    const fallback = document.getElementById('emailsFallback');
+    feedback.classList.remove('error');
+    fallback.style.display = 'none';
+
+    const emails = records
+        .filter(r => r && r.Saisie_completee !== true && r.adresse_ecole)
+        .map(r => `<${r.adresse_ecole}>`);
+
+    if (emails.length === 0) {
+        feedback.textContent = 'Toutes les écoles ont saisi leurs effectifs.';
+        return;
+    }
+
+    const text = emails.join(', ');
+
+    try {
+        await navigator.clipboard.writeText(text);
+        feedback.textContent = `${emails.length} adresse(s) copiée(s) dans le presse-papier.`;
+    } catch (err) {
+        feedback.textContent = 'Copie automatique impossible, sélectionnez le texte ci-dessous.';
+        feedback.classList.add('error');
+        fallback.value = text;
+        fallback.style.display = 'block';
+        fallback.select();
+    }
+});
+</script>
+
+</body>
+</html>
