@@ -10,12 +10,10 @@
   À ajouter via : Add Widget → Custom → URL de cette page, puis
   lier le widget à la vue voulue ("Select by") pour qu'il ne
   reçoive que les lignes filtrées/visibles de cette vue.
-  Au premier chargement, Grist demande de faire correspondre les
-  colonnes "Saisie complétée" et "Adresse e-mail école" avec les
-  colonnes réelles de la table.
-  L'export .xlsx lit la table complète via fetchSelectedTable(),
-  donc les colonnes masquées dans la vue liée sont tout de même
-  incluses dans le fichier téléchargé.
+  Pas de mapping de colonnes ici (volontairement) : déclarer un
+  mapping restreint aussi l'accès de fetchSelectedTable() aux
+  seules colonnes mappées, ce qui casserait l'export complet.
+  Les noms de colonnes réels sont donc en dur ci-dessous (COL_*).
   ============================================================
 -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
@@ -121,18 +119,17 @@ button:disabled {
 </div>
 
 <script>
+const COL_SAISIE = 'Saisie_completee';
+const COL_EMAIL = 'email_ecole';
+
 let records = [];
 
 grist.ready({
-    columns: [
-        { name: 'Saisie_completee', title: 'Saisie complétée', type: 'Bool' },
-        { name: 'adresse_ecole', title: 'Adresse e-mail école', type: 'Text' },
-    ],
     requiredAccess: 'full',
 });
 
-grist.onRecords((data, mappings) => {
-    records = grist.mapColumnNames(data, mappings) || [];
+grist.onRecords((data) => {
+    records = data || [];
     render();
 });
 
@@ -147,7 +144,7 @@ function formatPourcentage(done, total) {
 
 function render() {
     const total = records.length;
-    const done = records.filter(r => r && r.Saisie_completee === true).length;
+    const done = records.filter(r => r && r[COL_SAISIE] === true).length;
 
     const doneEcole = done <= 1 ? 'école' : 'écoles';
     const doneVerbe = done <= 1 ? 'a saisi' : 'ont saisi';
@@ -169,8 +166,8 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     fallback.style.display = 'none';
 
     const emails = records
-        .filter(r => r && r.Saisie_completee !== true && r.adresse_ecole)
-        .map(r => `<${r.adresse_ecole}>`);
+        .filter(r => r && r[COL_SAISIE] !== true && r[COL_EMAIL])
+        .map(r => `<${r[COL_EMAIL]}>`);
 
     if (emails.length === 0) {
         feedback.textContent = 'Toutes les écoles ont saisi leurs effectifs.';
