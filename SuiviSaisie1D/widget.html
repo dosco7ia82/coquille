@@ -13,15 +13,20 @@
   Au premier chargement, Grist demande de faire correspondre les
   colonnes "Saisie complétée" et "Adresse e-mail école" avec les
   colonnes réelles de la table.
+  L'export .xlsx lit la table complète via fetchSelectedTable(),
+  donc les colonnes masquées dans la vue liée sont tout de même
+  incluses dans le fichier téléchargé.
   ============================================================
 -->
 <script src="https://grist.numerique.gouv.fr/grist-plugin-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root {
     --blue-france-main-525: #000091;
     --error-425: #ce0500;
     --success-425: #18753c;
     --text-mention-grey: #666666;
+    --border-default-grey: #dddddd;
 }
 * { box-sizing: border-box; }
 body {
@@ -30,9 +35,23 @@ body {
     font-family: Marianne, Arial, sans-serif;
     color: #161616;
 }
+.columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+.column {
+    flex: 1 1 240px;
+    min-width: 240px;
+    padding-right: 1.5rem;
+    border-right: 1px solid var(--border-default-grey);
+}
+.column:last-child {
+    border-right: none;
+    padding-right: 0;
+}
 #summary {
     font-size: 1.05rem;
-    margin-bottom: 1.25rem;
 }
 #summary strong {
     color: var(--blue-france-main-525);
@@ -58,12 +77,13 @@ button:disabled {
     opacity: .5;
     cursor: default;
 }
-#copyFeedback {
-    margin-left: .75rem;
+#copyFeedback, #downloadFeedback {
+    display: block;
+    margin-top: .6rem;
     font-size: .9rem;
     color: var(--success-425);
 }
-#copyFeedback.error {
+#copyFeedback.error, #downloadFeedback.error {
     color: var(--error-425);
 }
 #emailsFallback {
@@ -78,12 +98,27 @@ button:disabled {
 </head>
 <body>
 
-<div id="summary">Chargement…</div>
+<div class="columns">
 
-<h2>Relancer les écoles qui n'ont pas encore saisi</h2>
-<button id="copyBtn" disabled>Copier les adresses e-mail</button>
-<span id="copyFeedback"></span>
-<textarea id="emailsFallback" rows="3" readonly></textarea>
+    <div class="column">
+        <h2>Suivre la saisie</h2>
+        <div id="summary">Chargement…</div>
+    </div>
+
+    <div class="column">
+        <h2>Relancer les écoles qui n'ont pas encore saisi</h2>
+        <button id="copyBtn" disabled>Copier les adresses e-mail</button>
+        <span id="copyFeedback"></span>
+        <textarea id="emailsFallback" rows="3" readonly></textarea>
+    </div>
+
+    <div class="column">
+        <h2>Exporter la table</h2>
+        <button id="downloadBtn" disabled>Télécharger les données en .xlsx</button>
+        <span id="downloadFeedback"></span>
+    </div>
+
+</div>
 
 <script>
 let records = [];
@@ -93,7 +128,7 @@ grist.ready({
         { name: 'Saisie_completee', title: 'Saisie complétée', type: 'Bool' },
         { name: 'adresse_ecole', title: 'Adresse e-mail école', type: 'Text' },
     ],
-    requiredAccess: 'read table',
+    requiredAccess: 'full',
 });
 
 grist.onRecords((data, mappings) => {
@@ -124,6 +159,7 @@ function render() {
         `<strong>${done}</strong> ${doneEcole} ${doneVerbe} ${donePossessif} effectifs, sur <strong>${total}</strong> ${totalEcole}, soit <strong>${pct}</strong>.`;
 
     document.getElementById('copyBtn').disabled = total === 0;
+    document.getElementById('downloadBtn').disabled = total === 0;
 }
 
 document.getElementById('copyBtn').addEventListener('click', async () => {
@@ -152,6 +188,43 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
         fallback.value = text;
         fallback.style.display = 'block';
         fallback.select();
+    }
+});
+
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+    const feedback = document.getElementById('downloadFeedback');
+    const btn = document.getElementById('downloadBtn');
+    feedback.classList.remove('error');
+    feedback.textContent = 'Préparation du fichier…';
+    btn.disabled = true;
+
+    try {
+        const table = await grist.fetchSelectedTable({ includeColumns: 'normal' });
+        const columnNames = Object.keys(table).filter(name => name !== 'manualSort');
+        const rowCount = table.id.length;
+
+        const rows = [];
+        for (let i = 0; i < rowCount; i++) {
+            const row = {};
+            for (const name of columnNames) {
+                row[name] = table[name][i];
+            }
+            rows.push(row);
+        }
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Effectifs');
+
+        const dateStr = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(workbook, `effectifs_${dateStr}.xlsx`);
+
+        feedback.textContent = 'Téléchargement lancé.';
+    } catch (err) {
+        feedback.textContent = "Erreur lors de l'export : " + err.message;
+        feedback.classList.add('error');
+    } finally {
+        btn.disabled = records.length === 0;
     }
 });
 </script>
