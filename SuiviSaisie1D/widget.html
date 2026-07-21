@@ -143,8 +143,9 @@ function formatPourcentage(done, total) {
 }
 
 function render() {
-    const total = records.length;
-    const done = records.filter(r => r && r[COL_SAISIE] === true).length;
+    const ecolesOuvertes = records.filter(r => r && r.Etat !== 'Fermee');
+    const total = ecolesOuvertes.length;
+    const done = ecolesOuvertes.filter(r => r[COL_SAISIE] === true).length;
 
     const doneEcole = done <= 1 ? 'école' : 'écoles';
     const doneVerbe = done <= 1 ? 'a saisi' : 'ont saisi';
