@@ -219,9 +219,9 @@ async function renderCampagne() {
         }
 
         container.innerHTML = `
-            <p>Date et heure de début : ${formatDateHeure(campagne.Date_debut)}</p>
-            <p>Date et heure de fin (Écoles) : ${formatDateHeure(campagne.Date_fin_ECOLE)}</p>
-            <p>Date et heure de fin (Circos) : ${formatDateHeure(campagne.Date_fin_CIRCO)}</p>
+            <p>Ouverture de la saisie : ${formatDateHeure(campagne.Date_debut)}</p>
+            <p>Fin saisie Écoles : ${formatDateHeure(campagne.Date_fin_ECOLE)}</p>
+            <p>Fin recadrage Circos : ${formatDateHeure(campagne.Date_fin_CIRCO)}</p>
             <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
         `;
     } catch (err) {
