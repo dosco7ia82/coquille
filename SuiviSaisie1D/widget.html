@@ -130,17 +130,47 @@ button:disabled {
 const COL_SAISIE = 'Saisie_completee';
 const COL_EMAIL = 'email_ecole';
 
-let records = [];
+// Toute lecture passe par fetchSelectedTable() : onRecords() ne renvoie que
+// les colonnes visibles dans la vue liée, ce qui masque des champs comme
+// Etat ou ID_campagne quand ils sont cachés côté Grist.
+let tableData = null;
+let rows = [];
 
 grist.ready({
     requiredAccess: 'full',
 });
 
-grist.onRecords((data) => {
-    records = data || [];
+grist.onRecords(() => {
+    refresh();
+});
+
+async function refresh() {
+    try {
+        tableData = await grist.fetchSelectedTable({ includeColumns: 'normal' });
+        rows = toRowObjects(tableData);
+    } catch (err) {
+        tableData = null;
+        rows = [];
+    }
     render();
     renderCampagne();
-});
+}
+
+function toRowObjects(table) {
+    if (!table || !table.id) return [];
+    const columns = Object.keys(table);
+    const out = [];
+    for (let i = 0; i < table.id.length; i++) {
+        const row = {};
+        for (const col of columns) row[col] = table[col][i];
+        out.push(row);
+    }
+    return out;
+}
+
+function firstDefined(values) {
+    return (values || []).find(v => v !== undefined && v !== null);
+}
 
 function formatDateHeure(ts) {
     if (!ts) return '';
@@ -155,30 +185,28 @@ function formatDateHeure(ts) {
     return `${datePart} à ${timePart}`;
 }
 
-function firstDefined(values) {
-    return (values || []).find(v => v !== undefined && v !== null);
-}
-
 async function renderCampagne() {
     const container = document.getElementById('campagneInfo');
     const titleEl = document.getElementById('campagneTitle');
 
+    if (!tableData) {
+        container.textContent = '';
+        return;
+    }
+
+    const rentree = firstDefined(tableData.Rentree_scolaire);
+    const idCampagne = firstDefined(tableData.ID_campagne);
+
+    titleEl.textContent = rentree
+        ? `Constat rapide de rentrée ${rentree}`
+        : 'Constat rapide de rentrée';
+
+    if (idCampagne === undefined) {
+        container.textContent = '';
+        return;
+    }
+
     try {
-        // fetchSelectedTable() lit toute la table, y compris les colonnes
-        // masquées dans la vue liée (contrairement à onRecords()).
-        const table = await grist.fetchSelectedTable({ includeColumns: 'normal' });
-        const rentree = firstDefined(table.Rentree_scolaire);
-        const idCampagne = firstDefined(table.ID_campagne);
-
-        titleEl.textContent = rentree
-            ? `Constat rapide de rentrée ${rentree}`
-            : 'Constat rapide de rentrée';
-
-        if (idCampagne === undefined) {
-            container.textContent = '';
-            return;
-        }
-
         const campagnes = await grist.docApi.fetchTable('Campagnes_de_saisie');
         const idx = campagnes.id.indexOf(idCampagne);
         if (idx === -1) {
@@ -193,7 +221,7 @@ async function renderCampagne() {
             <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
         `;
     } catch (err) {
-        container.textContent = 'Erreur de chargement des dates de campagne.';
+        container.textContent = 'Erreur de chargement des dates de campagne : ' + err.message;
     }
 }
 
@@ -207,7 +235,7 @@ function formatPourcentage(done, total) {
 }
 
 function render() {
-    const ecolesOuvertes = records.filter(r => r && r.Etat !== 'Fermee');
+    const ecolesOuvertes = rows.filter(r => r.Etat === 'Ouverte');
     const total = ecolesOuvertes.length;
     const done = ecolesOuvertes.filter(r => r[COL_SAISIE] === true).length;
 
@@ -230,8 +258,8 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     feedback.classList.remove('error');
     fallback.style.display = 'none';
 
-    const emails = records
-        .filter(r => r && r.Etat !== 'Fermee' && r[COL_SAISIE] !== true && r[COL_EMAIL])
+    const emails = rows
+        .filter(r => r.Etat === 'Ouverte' && r[COL_SAISIE] !== true && r[COL_EMAIL])
         .map(r => `<${r[COL_EMAIL]}>`);
 
     if (emails.length === 0) {
@@ -254,18 +282,19 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
 });
 
 const EXPORT_HIDDEN_COLUMNS = [
-    'Etat2', 'ID_campagne', 'Secteur', 'Cree_le', 'Cree_par',
-    'Derniere_mise_a_jour', 'UUID', 'Ecole_nom_complet', 'Data_campagne', 'id',
-    'TPS_ULIS', 'PS_ULIS', 'MS_ULIS', 'GS_ULIS', 'manualSort',
+    'Etat', 'Etat2', 'ID_campagne', 'Secteur', 'Cree_le', 'Cree_par',
+    'Derniere_mise_a_jour', 'UUID', 'Ecole_nom_complet', 'Data_campagne',
+    'Date_campagne', 'id', 'TPS_ULIS', 'PS_ULIS', 'MS_ULIS', 'GS_ULIS', 'manualSort',
 ];
 
 function moveAfter(order, colsToMove, afterCol) {
-    const remaining = order.filter(c => !colsToMove.includes(c));
+    const existing = colsToMove.filter(c => order.includes(c));
+    const remaining = order.filter(c => !existing.includes(c));
     const idx = remaining.indexOf(afterCol);
     if (idx === -1) return order;
     return [
         ...remaining.slice(0, idx + 1),
-        ...colsToMove,
+        ...existing,
         ...remaining.slice(idx + 1),
     ];
 }
@@ -289,21 +318,21 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        const table = await grist.fetchSelectedTable({ includeColumns: 'normal' });
+        const table = tableData || await grist.fetchSelectedTable({ includeColumns: 'normal' });
         const columnOrder = buildExportColumnOrder(Object.keys(table));
         const rowCount = table.id.length;
 
-        const rows = [];
+        const exportRows = [];
         for (let i = 0; i < rowCount; i++) {
             if (table.Etat[i] !== 'Ouverte') continue;
             const row = {};
             for (const name of columnOrder) {
                 row[name] = table[name][i];
             }
-            rows.push(row);
+            exportRows.push(row);
         }
 
-        const worksheet = XLSX.utils.json_to_sheet(rows, { header: columnOrder });
+        const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: columnOrder });
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Effectifs');
 
@@ -315,7 +344,7 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
         feedback.textContent = "Erreur lors de l'export : " + err.message;
         feedback.classList.add('error');
     } finally {
-        btn.disabled = records.length === 0;
+        btn.disabled = rows.length === 0;
     }
 });
 </script>
