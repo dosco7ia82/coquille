@@ -196,28 +196,19 @@ async function renderCampagne() {
     const container = document.getElementById('campagneInfo');
     const titleEl = document.getElementById('campagneTitle');
 
-    if (!tableData) {
-        container.textContent = '';
-        return;
-    }
-
-    const rentree = firstDefined(tableData.Rentree_scolaire);
-    const idCampagne = firstDefined(tableData.ID_campagne);
-
+    const rentree = tableData ? firstDefined(tableData.Rentree_scolaire) : undefined;
     titleEl.textContent = rentree
         ? `Constat rapide de rentrée ${rentree}`
         : 'Constat rapide de rentrée';
 
-    if (idCampagne === undefined) {
-        container.textContent = '';
-        return;
-    }
-
     try {
+        // Une seule campagne active à la fois : le webhook cherche lui-même
+        // la campagne ouverte, pas besoin de connaître ID_campagne ici (dont
+        // l'accès dépend des permissions Grist selon le rôle connecté).
         const res = await fetch(CONFIG.webhookCampagne, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id_campagne: idCampagne }),
+            body: JSON.stringify({}),
         });
         if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
         const campagne = await res.json();
