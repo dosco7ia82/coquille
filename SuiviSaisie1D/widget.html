@@ -54,6 +54,14 @@ body {
 #summary {
     font-size: 1.05rem;
 }
+#campagneInfo p {
+    margin: .15rem 0;
+    font-size: .8rem;
+    line-height: 1.25;
+}
+.nowrap {
+    white-space: nowrap;
+}
 #summary strong {
     color: var(--blue-france-main-525);
 }
@@ -192,6 +200,28 @@ function formatDateHeure(ts) {
     return `${datePart} à ${timePart}`;
 }
 
+function formatJourLong(ts) {
+    return new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long',
+    }).format(new Date(ts * 1000));
+}
+
+function formatHeure(ts) {
+    return new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(ts * 1000)).replace(':', 'h');
+}
+
+function jourISO(ts) {
+    return new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date(ts * 1000));
+}
+
+function memeJour(ts1, ts2, ts3) {
+    return jourISO(ts1) === jourISO(ts2) && jourISO(ts2) === jourISO(ts3);
+}
+
 async function renderCampagne() {
     const container = document.getElementById('campagneInfo');
     const titleEl = document.getElementById('campagneTitle');
@@ -218,12 +248,24 @@ async function renderCampagne() {
             return;
         }
 
-        container.innerHTML = `
-            <p>Ouverture de la saisie : ${formatDateHeure(campagne.Date_debut)}</p>
-            <p>Fin saisie Écoles : ${formatDateHeure(campagne.Date_fin_ECOLE)}</p>
-            <p>Fin recadrage Circos : ${formatDateHeure(campagne.Date_fin_CIRCO)}</p>
-            <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
-        `;
+        const { Date_debut, Date_fin_ECOLE, Date_fin_CIRCO } = campagne;
+
+        if (Date_fin_ECOLE && Date_fin_CIRCO && memeJour(Date_debut, Date_fin_ECOLE, Date_fin_CIRCO)) {
+            container.innerHTML = `
+                <p><strong>Le ${formatJourLong(Date_debut)}</strong></p>
+                <p>Ouverture de la saisie : ${formatHeure(Date_debut)}</p>
+                <p>Fin saisie écoles : ${formatHeure(Date_fin_ECOLE)}</p>
+                <p>Fin saisie circos : ${formatHeure(Date_fin_CIRCO)}</p>
+                <p><i>Peu après la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
+            `;
+        } else {
+            container.innerHTML = `
+                <p>Ouverture de la saisie : <span class="nowrap">${formatDateHeure(Date_debut)}</span></p>
+                <p>Fin saisie Écoles : <span class="nowrap">${formatDateHeure(Date_fin_ECOLE)}</span></p>
+                <p>Fin recadrage Circos : <span class="nowrap">${formatDateHeure(Date_fin_CIRCO)}</span></p>
+                <p><i>Dans l'heure suivant la fin de la campagne, vous serez destinataire du fichier compilé.</i></p>
+            `;
+        }
     } catch (err) {
         container.textContent = 'Erreur de chargement des dates de campagne : ' + err.message;
     }
