@@ -1,1 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta name="robots" content="noindex">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataviz - Carte scolaire 1D</title>
+</head>
+<body>
 
+<div id="status">Chargement des données…</div>
+<pre id="result" hidden></pre>
+
+<script>
+const CONFIG = {
+    webhookFetch: 'https://n8n.incubateur.education.gouv.fr/webhook/e7a3319e-9447-44ed-af34-8e7672e473df',
+};
+
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+
+async function loadData() {
+    const sessId = new URLSearchParams(window.location.search).get('SessID');
+
+    try {
+        const res = await fetch(CONFIG.webhookFetch, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ SessID: sessId }),
+        });
+        if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+        const data = await res.json();
+        statusEl.hidden = true;
+        resultEl.hidden = false;
+        resultEl.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+        statusEl.textContent = `Erreur lors du chargement des données : ${err.message}`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+
+</body>
+</html>
