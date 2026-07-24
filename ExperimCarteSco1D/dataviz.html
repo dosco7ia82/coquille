@@ -200,9 +200,9 @@ button, select { font-family: inherit; }
 }
 .map-ctrl-btn:hover { background: #fff; color: #111; }
 
-/* ── Encart latéral (clic sur un polygone en mode Interne, Cumul RS26-RS30) ── */
+/* ── Encart latéral (clic sur un polygone, Unité Variation, Cumul RS26-RS30) ── */
 #map-info-panel {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 17rem; max-width: 82%;
+  position: absolute; top: 0; right: 0; bottom: 0; width: 20rem; max-width: 88%;
   background: #fff; border-left: 1px solid var(--border-default-grey);
   box-shadow: -2px 0 12px rgba(0,0,0,0.18); z-index: 1100; overflow-y: auto;
   padding: 1.1rem 1.2rem; display: none;
@@ -216,8 +216,14 @@ button, select { font-family: inherit; }
 #info-feature-name { margin: 0 1.6rem 0.3rem 0; font-size: 1.02rem; color: var(--blue-france-main-525); font-weight: 700; }
 #info-feature-value { margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--text-default-grey); }
 #info-school-block { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-default-grey); }
-#info-school-name { margin: 0 0 0.25rem; font-size: 0.88rem; color: var(--text-default-grey); font-weight: 700; }
-#info-school-value { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-default-grey); }
+#info-school-title { margin: 0 0 0.15rem; font-size: 0.9rem; color: var(--text-default-grey); font-weight: 700; line-height: 1.3; }
+.small.text-muted { font-size: 0.72rem; color: var(--text-mention-grey); margin: 0 0 0.7rem; }
+#info-school-table { width: 100%; border-collapse: collapse; font-size: 0.68rem; }
+#info-school-table th, #info-school-table td { padding: 0.25rem 0.3rem; text-align: right; }
+#info-school-table th:first-child, #info-school-table td:first-child { text-align: left; }
+#info-school-table thead th { border-bottom: 2px solid var(--text-default-grey); font-weight: 700; }
+#info-school-table tbody tr:nth-child(even) { background: var(--background-default-grey); }
+#info-school-table tr.cumul-row { border-top: 2px solid var(--text-default-grey); font-weight: 700; }
 
 .epci-label, .circo-label { background: transparent; border: none; box-shadow: none; pointer-events: none; text-align: center; }
 .epci-label-inner {
@@ -279,7 +285,7 @@ button, select { font-family: inherit; }
         <div class="seg seg-icons" id="seg-type">
           <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i><span>Effectifs</span></button>
           <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i><span>Variation</span></button>
-          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i><span>Pourcentage</span></button>
+          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i><span>Pourcent.</span></button>
         </div>
       </div>
 
@@ -316,8 +322,12 @@ button, select { font-family: inherit; }
             <h3 id="info-feature-name"></h3>
             <p id="info-feature-value"></p>
             <div id="info-school-block" hidden>
-              <h4 id="info-school-name"></h4>
-              <p id="info-school-value"></p>
+              <h4 id="info-school-title"></h4>
+              <p id="info-school-uai" class="small text-muted"></p>
+              <table id="info-school-table">
+                <thead><tr><th>Rentrée</th><th>Effectifs</th><th>Variation</th><th>Pourcent.</th></tr></thead>
+                <tbody id="info-school-tbody"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -644,27 +654,31 @@ function styleFeature(feature) {
 function clickEnabled() {
   return currentRentree() === 'CUMUL' && state.type === 'variation';
 }
-let selectedLayer = null;
+let drillActive = false;
 function onEachFeature(feature, layer) {
   layer.on({
-    mouseover(e){ if (!clickEnabled() || e.target === selectedLayer) return; e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
-    mouseout(e){ if (!clickEnabled() || e.target === selectedLayer) return; geojsonLayer.resetStyle(e.target); },
+    mouseover(e){ if (!clickEnabled() || drillActive) return; e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
+    mouseout(e){ if (!clickEnabled() || drillActive) return; geojsonLayer.resetStyle(e.target); },
     click(){ onFeatureClick(feature, layer); },
   });
 }
 function onFeatureClick(feature, layer) {
   if (!clickEnabled()) return;
-  map.fitBounds(layer.getBounds(), { padding: [20,20] });
-  if (selectedLayer && selectedLayer !== layer && geojsonLayer) geojsonLayer.resetStyle(selectedLayer);
-  selectedLayer = layer;
-  layer.setStyle({ weight: 4, color: '#ff6600', fillOpacity: 0 });
-  layer.bringToFront();
-  showSchoolsForFeature(feature);
+  map.fitBounds(layer.getBounds(), { padding: [20,20], animate: false });
+  if (!drillActive) {
+    clearLabels();
+    if (geojsonLayer) geojsonLayer.eachLayer(l => l.setStyle({ weight: 4, color: '#ff6600', fillOpacity: 0 }));
+    drillActive = true;
+  }
+  showSchoolsForFeature();
   showFeatureInfo(feature);
 }
 function clearSelection() {
-  if (selectedLayer && geojsonLayer) geojsonLayer.resetStyle(selectedLayer);
-  selectedLayer = null;
+  if (drillActive && geojsonLayer) {
+    geojsonLayer.eachLayer(l => geojsonLayer.resetStyle(l));
+    addLabels();
+  }
+  drillActive = false;
   document.getElementById('map-info-panel').classList.remove('show');
   document.getElementById('info-school-block').hidden = true;
 }
@@ -672,35 +686,36 @@ function showFeatureInfo(feature) {
   const cache = scaleCache[state.echelle];
   const code = String(feature.properties[cache.codeProp]);
   const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
-  document.getElementById('info-feature-name').textContent = nom;
+  const label = state.echelle === 'circo' ? `Circonscription : ${nom}` : nom;
+  document.getElementById('info-feature-name').textContent = label;
   document.getElementById('info-feature-value').textContent = formatVal(getVal(code));
   document.getElementById('info-school-block').hidden = true;
   document.getElementById('map-info-panel').classList.add('show');
 }
+function fmtSchoolEff(v) { return v == null ? '·' : Math.round(v).toLocaleString('fr-FR'); }
+function fmtSchoolPct(v) {
+  if (v == null) return '·';
+  const sign = v > 0 ? '+' : '';
+  return sign + v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
+}
 function showSchoolInfo(school) {
-  document.getElementById('info-school-name').textContent = school.nom || school.uai;
-  document.getElementById('info-school-value').textContent = formatSchoolVal(school.cumul);
-  document.getElementById('info-school-block').hidden = false;
-}
-
-/* ── Point-dans-polygone (rattachement écoles ↔ EPCI/circo sélectionné) ── */
-function pointInRing(pt, ring) {
-  const [x, y] = pt;
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i], [xj, yj] = ring[j];
-    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
+  document.getElementById('info-school-title').textContent = schoolDisplayName(school);
+  document.getElementById('info-school-uai').textContent = school.uai;
+  const rsRows = RENTREES_ALL.filter(r => r >= 'RS21');
+  let prev = 'RS20', rowsHtml = '';
+  for (const rs of rsRows) {
+    const eff = school.years[rs], prevEff = school.years[prev];
+    let variation = null, pct = null;
+    if (eff != null && prevEff != null) {
+      variation = eff - prevEff;
+      if (prevEff !== 0) pct = variation / prevEff * 100;
+    }
+    rowsHtml += `<tr><td>${rs}</td><td>${fmtSchoolEff(eff)}</td><td>${variation==null?'·':formatSchoolVal(variation)}</td><td>${fmtSchoolPct(pct)}</td></tr>`;
+    prev = rs;
   }
-  return inside;
-}
-function pointInPolygonGeom(pt, geom) {
-  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-  return polys.some(rings => {
-    if (!pointInRing(pt, rings[0])) return false;
-    for (let k = 1; k < rings.length; k++) if (pointInRing(pt, rings[k])) return false;
-    return true;
-  });
+  rowsHtml += `<tr class="cumul-row"><td>Cumul<br>RS26-RS30</td><td>·</td><td>${school.cumul==null?'·':formatSchoolVal(school.cumul)}</td><td>${fmtSchoolPct(school.cumulPct)}</td></tr>`;
+  document.getElementById('info-school-tbody').innerHTML = rowsHtml;
+  document.getElementById('info-school-block').hidden = false;
 }
 
 /* ── Conversion de coordonnées écoles (Lambert-93 ou lat/lng inversés) ── */
@@ -748,7 +763,9 @@ function buildSchoolModel(records) {
   const colUai = find(/^uai$/i) || find(/uai/i);
   const colX = find(/coordx/i) || find(/longitude|lng|lon/i) || find(/^x$/i);
   const colY = find(/coordy/i) || find(/latitude|lat/i) || find(/^y$/i);
-  const colNom = keys.find(k => k !== colUai && /nom|libell|ecole/i.test(k));
+  const colSigle = find(/sigle/i);
+  const colCommune = find(/commune/i);
+  const colDenomination = find(/denomination/i) || keys.find(k => k !== colUai && k !== colSigle && k !== colCommune && /nom|libell|ecole/i.test(k));
 
   // La table peut être "dépivotée" (une ligne par école×rentrée, avec une
   // colonne rentrée + une colonne effectif) ou "large" (une ligne par école,
@@ -760,19 +777,26 @@ function buildSchoolModel(records) {
   }
   const isWide = Object.keys(rsKeyMap).length >= 2;
   console.debug('[dataviz] format écoles détecté :', isWide ? 'large (1 colonne par rentrée)' : 'dépivoté (1 ligne par rentrée)',
-    { colUai, colX, colY, colNom, rsKeyMap });
+    { colUai, colX, colY, colSigle, colDenomination, colCommune, rsKeyMap });
 
+  const makeSchool = (uai, lng, lat, row) => ({
+    uai, lng, lat,
+    sigle: colSigle ? row[colSigle] : '',
+    denomination: colDenomination ? row[colDenomination] : uai,
+    commune: colCommune ? row[colCommune] : '',
+    years: {},
+  });
   const byUai = {};
   if (isWide) {
     for (const row of records) {
       const uai = String(row[colUai]);
       const [lng, lat] = resolveSchoolCoords(Number(row[colX]), Number(row[colY]));
-      const years = {};
+      const s = makeSchool(uai, lng, lat, row);
       for (const [rs, k] of Object.entries(rsKeyMap)) {
         const v = Number(row[k]);
-        if (Number.isFinite(v)) years[rs] = v;
+        if (Number.isFinite(v)) s.years[rs] = v;
       }
-      byUai[uai] = { uai, lng, lat, nom: colNom ? row[colNom] : uai, years };
+      byUai[uai] = s;
     }
   } else {
     const colRentree = find(/rent/i);
@@ -788,7 +812,7 @@ function buildSchoolModel(records) {
       if (!Number.isFinite(eff)) continue;
       if (!byUai[uai]) {
         const [lng, lat] = resolveSchoolCoords(Number(row[colX]), Number(row[colY]));
-        byUai[uai] = { uai, lng, lat, nom: colNom ? row[colNom] : uai, years: {} };
+        byUai[uai] = makeSchool(uai, lng, lat, row);
       }
       byUai[uai].years[row[colRentree]] = eff;
     }
@@ -803,7 +827,10 @@ function buildSchoolModel(records) {
       const idxFirst = rentreesAll.indexOf(cumulRange[0]);
       const prevFirstRS = idxFirst > 0 ? rentreesAll[idxFirst-1] : null;
       const vLast = s.years[lastRS], vPrev = prevFirstRS != null ? s.years[prevFirstRS] : null;
-      if (vLast != null && vPrev != null) s.cumul = vLast - vPrev;
+      if (vLast != null && vPrev != null) {
+        s.cumul = vLast - vPrev;
+        if (vPrev !== 0) s.cumulPct = (vLast - vPrev) / vPrev * 100;
+      }
     }
     model.points.push(s);
   }
@@ -863,19 +890,71 @@ function showSchoolLegend(breaks, colors) {
   };
   schoolLegendControl.addTo(map);
 }
-async function showSchoolsForFeature(feature) {
+function schoolDisplayName(school) {
+  const main = [school.sigle, school.denomination].filter(Boolean).join(' ');
+  return school.commune ? `${main} (${school.commune})` : main;
+}
+// Écarte les points-écoles trop proches à l'écran (chevauchement visuel) :
+// côte à côte si 2, grille de 2 ou 3 colonnes si plus.
+function declusterSchoolPoints(points) {
+  const THRESHOLD_PX = 16, SPACING_PX = 14;
+  const pts = points.map(p => {
+    const xy = map.latLngToLayerPoint([p.lat, p.lng]);
+    return { school: p, x: xy.x, y: xy.y };
+  });
+  const visited = new Array(pts.length).fill(false);
+  const clusters = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (visited[i]) continue;
+    visited[i] = true;
+    const stack = [i], cluster = [];
+    while (stack.length) {
+      const idx = stack.pop();
+      cluster.push(idx);
+      for (let j = 0; j < pts.length; j++) {
+        if (visited[j]) continue;
+        const dx = pts[idx].x - pts[j].x, dy = pts[idx].y - pts[j].y;
+        if (Math.sqrt(dx*dx + dy*dy) < THRESHOLD_PX) { visited[j] = true; stack.push(j); }
+      }
+    }
+    clusters.push(cluster);
+  }
+  const placed = [];
+  for (const cluster of clusters) {
+    const n = cluster.length;
+    if (n === 1) { const p = pts[cluster[0]]; placed.push({ school: p.school, x: p.x, y: p.y }); continue; }
+    const cols = n <= 2 ? 2 : (n <= 4 ? 2 : 3);
+    const rows = Math.ceil(n / cols);
+    const cx = cluster.reduce((s,i) => s + pts[i].x, 0) / n;
+    const cy = cluster.reduce((s,i) => s + pts[i].y, 0) / n;
+    cluster.forEach((idx, k) => {
+      const col = k % cols, row = Math.floor(k / cols);
+      placed.push({
+        school: pts[idx].school,
+        x: cx + (col - (cols-1)/2) * SPACING_PX,
+        y: cy + (row - (rows-1)/2) * SPACING_PX,
+      });
+    });
+  }
+  return placed.map(({ school, x, y }) => {
+    const ll = map.layerPointToLatLng([x, y]);
+    return { school, lat: ll.lat, lng: ll.lng };
+  });
+}
+async function showSchoolsForFeature() {
   let model;
   try { model = await ensureSchoolData(); }
   catch (err) { console.error('[dataviz] Erreur chargement des écoles :', err); return; }
-  const inside = model.points.filter(p => p.cumul != null && pointInPolygonGeom([p.lng, p.lat], feature.geometry));
+  const withCumul = model.points.filter(p => p.cumul != null);
   if (schoolLayerGroup) schoolLayerGroup.remove();
-  const { breaks, colors } = buildSchoolBreaks(inside.map(p => p.cumul));
+  const { breaks, colors } = buildSchoolBreaks(withCumul.map(p => p.cumul));
+  const placed = declusterSchoolPoints(withCumul);
   schoolLayerGroup = L.layerGroup();
-  for (const p of inside) {
-    L.circleMarker([p.lat, p.lng], {
+  for (const { school: p, lat, lng } of placed) {
+    L.circleMarker([lat, lng], {
       radius: 6, weight: 1, color: '#333',
       fillColor: schoolColor(p.cumul, breaks, colors), fillOpacity: 0.9,
-    }).bindTooltip(`${p.nom || p.uai} : ${formatSchoolVal(p.cumul)}`)
+    }).bindTooltip(`${schoolDisplayName(p)} : ${formatSchoolVal(p.cumul)}`)
       .on('click', () => showSchoolInfo(p))
       .addTo(schoolLayerGroup);
   }
