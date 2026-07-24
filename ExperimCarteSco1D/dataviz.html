@@ -1,59 +1,783 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta name="robots" content="noindex">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dataviz - Carte scolaire 1D</title>
-    <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta name="robots" content="noindex">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carte scolaire 1D — Prévisions d'effectifs</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --background-default-grey: #f6f6f6;
+  --background-alt-blue-france: #ececfe;
+  --border-default-grey: #dddddd;
+  --text-default-grey: #161616;
+  --text-mention-grey: #666666;
+  --blue-france-main-525: #000091;
+  --blue-france-sun-113: #1212ff;
+  --error-425: #ce0500;
+  --success-425: #18753c;
+  --focus-outline: #0a76f6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: Marianne, Arial, sans-serif;
+  background: var(--background-default-grey);
+  color: var(--text-default-grey);
+  font-size: clamp(14px, 1vw + 8px, 19px);
+  line-height: 1.4;
+}
+button, select { font-family: inherit; }
+
+/* ── Layout général ─────────────────────────────────────────── */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#header {
+  background: var(--blue-france-main-525);
+  color: #fff;
+  padding: 0.55em 1.2em;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  z-index: 10;
+}
+#header h1 {
+  margin: 0;
+  font-size: clamp(1.05rem, 1.1vw + 0.7rem, 1.7rem);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+#body-wrap { flex: 1; display: flex; min-height: 0; }
+
+/* ── Sidebar ────────────────────────────────────────────────── */
+#sidebar {
+  width: 15.5rem;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid var(--border-default-grey);
+  overflow-y: auto;
+  padding: 1rem 0.9rem;
+}
+.nav-section { margin-bottom: 1.4rem; }
+.nav-section.discrete { margin-top: 2rem; opacity: 0.82; }
+.nav-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-mention-grey);
+  margin-bottom: 0.5rem;
+}
+.seg {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border-default-grey);
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+.seg-btn {
+  border: none; border-bottom: 1px solid var(--border-default-grey);
+  background: #fff; color: var(--text-default-grey);
+  padding: 0.55em 0.7em; font-size: 0.98rem; font-weight: 600;
+  text-align: left; cursor: pointer; transition: background .15s, color .15s;
+}
+.seg-btn:last-child { border-bottom: none; }
+.seg-btn:hover { background: var(--background-alt-blue-france); }
+.seg-btn.active { background: var(--blue-france-main-525); color: #fff; }
+.seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.switch-row {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-default-grey); border-radius: 0.3rem;
+  padding: 0.5em 0.7em; background: #fff;
+}
+.switch-opt { font-size: 0.9rem; font-weight: 600; color: var(--text-mention-grey); transition: color .15s; }
+.switch-opt.on { color: var(--blue-france-main-525); }
+.ts-track { position: relative; width: 2.6rem; height: 1.4rem; background: #ccc; border-radius: 1rem; flex-shrink: 0; margin: 0 0.55em; cursor: pointer; transition: background .2s; }
+.ts-thumb { position: absolute; width: 1.1rem; height: 1.1rem; background: #fff; border-radius: 50%; top: 0.15rem; left: 0.15rem; box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: left .2s; }
+.ts-track.on { background: var(--blue-france-main-525); }
+.ts-track.on .ts-thumb { left: 1.35rem; }
+
+.mode-note {
+  font-size: 0.68rem; color: var(--text-mention-grey); margin-top: 0.4rem; line-height: 1.35;
+}
+
+/* ── Contenu ────────────────────────────────────────────────── */
+#content { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #fff; }
+.view-pane { position: absolute; inset: 0; display: none; }
+.view-pane.show { display: block; }
+#pane-carte { display: none; }
+#pane-carte.show { display: flex; flex-direction: column; }
+#map { flex: 1; }
+
+.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-mention-grey); font-size: 1.1rem; text-align: center; padding: 2rem;
+}
+
+#map-toolbar {
+  display: flex; align-items: stretch; gap: 1rem; background: #2d2d2d; color: #fff;
+  padding: 0 0.9rem; min-height: 3.4rem; flex-shrink: 0;
+}
+#tl-wrap { flex: 1; display: flex; align-items: stretch; overflow: hidden; position: relative; }
+#tl-zones { position: absolute; inset: 0; display: flex; pointer-events: none; padding: 0 0.5rem; }
+.tl-zone { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 0.3rem; }
+.tl-zone-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.45); }
+.tl-zone.previsions {
+  background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(255,180,30,0.13) 4px, rgba(255,180,30,0.13) 8px);
+  border-left: 1px solid rgba(255,255,255,0.15);
+}
+.tl-zone.previsions .tl-zone-label { color: rgba(255,200,60,0.6); }
+#tl-rail { flex: 1; display: flex; align-items: flex-end; position: relative; z-index: 2; padding: 0 0.5rem 0.6rem; }
+#tl-rail::before { content: ''; position: absolute; bottom: 1.3rem; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.28); }
+.tl-item { flex: 1; display: flex; flex-direction: column; align-items: center; cursor: pointer; gap: 0.25rem; }
+.tl-label { font-size: 0.68rem; font-weight: 600; color: rgba(255,255,255,0.5); white-space: nowrap; }
+.tl-dot { width: 0.68rem; height: 0.68rem; border-radius: 50%; background: rgba(255,255,255,0.28); border: 2px solid rgba(255,255,255,0.4); transition: background .15s, transform .15s; }
+.tl-item:hover .tl-dot { background: rgba(255,255,255,0.6); transform: scale(1.2); }
+.tl-item:hover .tl-label { color: rgba(255,255,255,0.88); }
+.tl-item.active .tl-dot { background: #fff; border-color: #fff; transform: scale(1.4); }
+.tl-item.active .tl-label { color: #fff; font-weight: 800; }
+.tl-item.cumul .tl-dot { background: rgba(255,210,80,0.35); border-color: rgba(255,210,80,0.65); width: 0.8rem; height: 0.8rem; }
+.tl-item.cumul .tl-label { color: rgba(255,210,80,0.65); font-style: italic; white-space: normal; text-align: center; line-height: 1.2; }
+.tl-item.cumul.active .tl-dot { background: #ffd94d; border-color: #ffd94d; }
+.tl-item.cumul.active .tl-label { color: #ffd94d; }
+
+#map-controls { position: absolute; bottom: 0.7rem; left: 0.7rem; z-index: 1000; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.map-ctrl-btn {
+  background: rgba(255,255,255,0.92); border: 1px solid #bbb; color: #444;
+  font-size: 0.78rem; padding: 0.35em 0.6em; border-radius: 0.25rem; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+}
+.map-ctrl-btn:hover { background: #fff; color: #111; }
+
+.epci-label, .circo-label { background: transparent; border: none; box-shadow: none; pointer-events: none; text-align: center; }
+.epci-label-inner {
+  font-size: 1rem; font-weight: 700; color: #1a1a1a; line-height: 1.25; text-align: center; display: inline-block;
+  text-shadow: -1px -1px 0 rgba(255,255,255,.92), 1px -1px 0 rgba(255,255,255,.92), -1px 1px 0 rgba(255,255,255,.92), 1px 1px 0 rgba(255,255,255,.92), 0 0 4px rgba(255,255,255,.7);
+}
+.epci-variation { font-size: 0.92rem; font-weight: 800; display: block; margin-top: 2px;
+  text-shadow: -1px -1px 0 rgba(255,255,255,.92), 1px -1px 0 rgba(255,255,255,.92), -1px 1px 0 rgba(255,255,255,.92), 1px 1px 0 rgba(255,255,255,.92); }
+.var-neg { color: #a50026; } .var-pos { color: #1a6b2a; } .var-zero { color: #555; }
+
+.legend { background: rgba(255,255,255,0.96); padding: 0.7em 0.85em; border-radius: 0.3rem; box-shadow: 0 1px 5px rgba(0,0,0,0.3); font-size: 0.78rem; line-height: 1.5; }
+.legend h4 { margin: 0 0 0.45em; font-size: 0.82rem; color: #222; font-weight: 700; max-width: 12rem; line-height: 1.3; }
+.legend-item { display: flex; align-items: center; gap: 0.4em; margin: 1px 0; }
+.legend-color { width: 1.1rem; height: 0.8rem; border-radius: 0.15rem; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.12); }
+
+#session-error {
+  display: none; align-items: center; justify-content: center; height: 100%;
+  text-align: center; padding: 2rem; font-size: 1.15rem;
+}
+
+@media (max-width: 860px) {
+  #body-wrap { flex-direction: column; }
+  #sidebar { width: auto; border-right: none; border-bottom: 1px solid var(--border-default-grey);
+    display: flex; flex-wrap: wrap; gap: 0.8rem 1.5rem; }
+  .nav-section { margin-bottom: 0; }
+}
+</style>
 </head>
 <body>
 
-<div id="status">Chargement des données…</div>
-<pre id="result" hidden></pre>
+<div id="app">
+  <div id="header">
+    <h1 id="page-title">Chargement…</h1>
+  </div>
+
+  <div id="body-wrap">
+    <nav id="sidebar" aria-label="Navigation des vues">
+
+      <div class="nav-section">
+        <div class="nav-title">Échelle</div>
+        <div class="switch-row" id="switch-echelle" role="button" tabindex="0">
+          <span class="switch-opt" id="opt-epci">EPCI</span>
+          <span class="ts-track" id="track-echelle"><span class="ts-thumb"></span></span>
+          <span class="switch-opt" id="opt-circo">Circonscriptions</span>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-title">Vue</div>
+        <div class="seg" id="seg-vue">
+          <button type="button" class="seg-btn active" data-vue="carte">Cartes</button>
+          <button type="button" class="seg-btn" data-vue="courbes">Courbes</button>
+          <button type="button" class="seg-btn" data-vue="tableau">Tableau</button>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-title">Type de données</div>
+        <div class="seg" id="seg-type">
+          <button type="button" class="seg-btn" data-type="effectifs">Effectifs</button>
+          <button type="button" class="seg-btn active" data-type="variation">Variation</button>
+          <button type="button" class="seg-btn" data-type="pourcentage">Pourcentage</button>
+        </div>
+      </div>
+
+      <div class="nav-section discrete">
+        <div class="nav-title">Contrôles</div>
+        <div class="switch-row" id="switch-mode" role="button" tabindex="0" style="margin-bottom:0.6rem;">
+          <span class="switch-opt on" id="opt-presentation">Présentation</span>
+          <span class="ts-track" id="track-mode"><span class="ts-thumb"></span></span>
+          <span class="switch-opt" id="opt-interne">Interne</span>
+        </div>
+        <div class="seg" id="seg-export" style="display:none;">
+          <button type="button" class="seg-btn" data-export="png">Export PNG</button>
+          <button type="button" class="seg-btn" data-export="svg">Export SVG</button>
+          <button type="button" class="seg-btn" data-export="xlsx">Export Excel</button>
+        </div>
+        <div class="mode-note">En mode Interne : export des vues et clic sur la carte pour zoomer et afficher les écoles.</div>
+      </div>
+
+    </nav>
+
+    <div id="content">
+      <div id="session-error"></div>
+
+      <div id="pane-carte" class="view-pane">
+        <div id="map-toolbar">
+          <div id="tl-wrap">
+            <div id="tl-zones"></div>
+            <div id="tl-rail"></div>
+          </div>
+        </div>
+        <div style="flex:1; position:relative; min-height:0;">
+          <div id="map"></div>
+          <div id="map-controls">
+            <button type="button" class="map-ctrl-btn" id="btn-zoom-in" title="Zoom avant">+</button>
+            <button type="button" class="map-ctrl-btn" id="btn-zoom-out" title="Zoom arrière">−</button>
+            <button type="button" class="map-ctrl-btn" id="btn-zoom-reset" title="Réinitialiser la vue">Vue d'ensemble</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pane-courbes" class="view-pane">
+        <div class="placeholder">Vue Courbes — en cours d'intégration.</div>
+      </div>
+
+      <div id="pane-tableau" class="view-pane">
+        <div class="placeholder">Vue Tableau — en cours d'intégration.</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-const CONFIG = {
-    webhookSession: 'https://n8n.incubateur.education.gouv.fr/webhook/e7a3319e-9447-44ed-af34-8e7672e473df',
-    webhookProjectionsEpci: 'https://n8n.incubateur.education.gouv.fr/webhook/e8a3319e-9447-44ed-af34-8e7672e473df',
+window.onerror = function(msg, url, line) {
+  document.body.insertAdjacentHTML('beforeend',
+    '<div style="position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;padding:10px 16px;' +
+    'z-index:999999;font-size:0.8rem;font-family:monospace;">ERREUR JS ligne ' + line + ' : ' + msg + '</div>');
+  return true;
 };
 
-const statusEl = document.getElementById('status');
-const resultEl = document.getElementById('result');
+/* ══════════════════════ CONFIGURATION ══════════════════════ */
+const CONFIG = {
+  webhookSession:      'https://n8n.incubateur.education.gouv.fr/webhook/e7a3319e-9447-44ed-af34-8e7672e473df',
+  webhookProjEpci:     'https://n8n.incubateur.education.gouv.fr/webhook/e8a3319e-9447-44ed-af34-8e7672e473df',
+  webhookEcoles:       'https://n8n.incubateur.education.gouv.fr/webhook/e9a3319e-9447-44ed-af34-8e7672e473df',
+  webhookCirco:        'https://n8n.incubateur.education.gouv.fr/webhook/exa3319e-9447-44ed-af34-8e7672e473df',
+  geojsonEpci:  './epci.geojson',
+  geojsonCirco: './circonscriptions.geojson',
+};
+const RENTREES_ALL = ['RS19','RS20','RS21','RS22','RS23','RS24','RS25','RS26','RS27','RS28','RS29','RS30'];
+const RS_EXCLUDE_TIMELINE = new Set(['RS19','RS20']);
+
+/* ══════════════════════ ÉTAT GLOBAL ══════════════════════ */
+const state = {
+  sessId: new URLSearchParams(window.location.search).get('SessID'),
+  echelle: 'epci',       // 'epci' | 'circo'
+  vue: 'carte',          // 'carte' | 'courbes' | 'tableau'
+  type: 'variation',     // 'effectifs' | 'variation' | 'pourcentage'
+  mode: 'presentation',  // 'presentation' | 'interne'
+  rentreeIdx: null,       // index dans RENTREES (scale courante)
+};
+
+/* Cache par échelle : { geojson, records, model } */
+const scaleCache = { epci: {}, circo: {} };
 
 async function postJson(url, sessId) {
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ SessID: sessId }),
-    });
-    if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
-    return await res.json();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ SessID: sessId }),
+  });
+  if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+  return await res.json();
+}
+async function fetchGeojson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erreur chargement géométrie (HTTP ${res.status}).`);
+  return await res.json();
 }
 
-async function loadData() {
-    const sessId = new URLSearchParams(window.location.search).get('SessID');
+/* ══════════════════════ TRAITEMENT DES DONNÉES ══════════════════════ */
+const NEG_PALETTE = ['#ffffb2','#fdd49e','#fdbb84','#fc8d59','#ef6548','#d7301f','#b30000','#7f0000','#67000d'];
+const POS_PALETTE = ['#c7e9c0','#74c476','#238b45'];
+const COLORS_ABSOLU_DEF = ['#f7fbff','#deebf7','#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c'];
 
-    try {
-        const session = await postJson(CONFIG.webhookSession, sessId);
+function buildRelatifColors(breaks) {
+  const n = breaks.length - 1;
+  let nNeg = 0;
+  for (let i = 0; i < n; i++) if (breaks[i+1] <= 0) nNeg++;
+  const colors = []; let ni = 0, pi = 0;
+  for (let i = 0; i < n; i++) {
+    if (breaks[i+1] <= 0) {
+      const idx = nNeg > 1 ? Math.round((nNeg-1-ni) * (NEG_PALETTE.length-1) / (nNeg-1)) : NEG_PALETTE.length-1;
+      colors.push(NEG_PALETTE[idx]); ni++;
+    } else { colors.push(POS_PALETTE[Math.min(pi, POS_PALETTE.length-1)]); pi++; }
+  }
+  return colors;
+}
 
-        if (session.status === 'inactive') {
-            statusEl.innerHTML = session.message;
-            return;
-        }
+// Détection souple des colonnes selon l'échelle (les webhooks n8n peuvent
+// renvoyer des libellés de colonnes légèrement différents d'une table à l'autre).
+function detectColumns(sample, echelle) {
+  const keys = Object.keys(sample);
+  const find = re => keys.find(k => re.test(k));
+  let colCode, colNom;
+  if (echelle === 'epci') {
+    colCode = find(/code/i);
+    colNom  = keys.find(k => k !== colCode && /(epci|nom|libell)/i.test(k));
+  } else {
+    colCode = find(/uai.*circo|circo.*uai/i) || find(/circo/i);
+    colNom  = keys.find(k => k !== colCode && /(nom|libell|circo)/i.test(k)) || colCode;
+  }
+  const colRentree = find(/rent/i);
+  const colEleves  = find(/eleve|total/i);
+  const colEtat    = find(/etat|tat/i);
+  return { colCode, colNom, colRentree, colEleves, colEtat };
+}
 
-        const projections = await postJson(CONFIG.webhookProjectionsEpci, sessId);
+function buildModel(records, echelle) {
+  const model = {
+    EFFECTIFS: {}, NOM_BY_CODE: {}, VARIATIONS: {}, VARIATIONS_PCT: {},
+    CUMUL: {}, CUMUL_PCT: {}, RENTREES_DISPO: [], PREVISION_RS: [],
+    BREAKS: {}, COLORS: {}, N: {},
+  };
+  if (!records || records.length === 0) return model;
+  const { colCode, colNom, colRentree, colEleves, colEtat } = detectColumns(records[0], echelle);
 
-        statusEl.hidden = true;
-        resultEl.hidden = false;
-        resultEl.textContent = JSON.stringify(projections, null, 2);
-    } catch (err) {
-        statusEl.textContent = `Erreur lors du chargement des données : ${err.message}`;
+  for (const row of records) {
+    const code = String(row[colCode]);
+    const r = row[colRentree];
+    const eff = Number(row[colEleves]);
+    if (!model.EFFECTIFS[code]) model.EFFECTIFS[code] = {};
+    model.EFFECTIFS[code][r] = eff;
+    if (colNom && row[colNom] && !model.NOM_BY_CODE[code]) model.NOM_BY_CODE[code] = String(row[colNom]);
+  }
+  for (const code of Object.keys(model.EFFECTIFS))
+    if (!model.NOM_BY_CODE[code]) model.NOM_BY_CODE[code] = code;
+
+  const rsSet = new Set();
+  for (const row of records) rsSet.add(row[colRentree]);
+  const rentreesAll = RENTREES_ALL.filter(r => rsSet.has(r));
+
+  for (const [code, years] of Object.entries(model.EFFECTIFS)) {
+    model.VARIATIONS[code] = {}; model.VARIATIONS_PCT[code] = {};
+    for (let i = 1; i < rentreesAll.length; i++) {
+      const r = rentreesAll[i], prev = rentreesAll[i-1];
+      if (years[r] != null && years[prev] != null) {
+        model.VARIATIONS[code][r] = years[r] - years[prev];
+        if (years[prev] !== 0) model.VARIATIONS_PCT[code][r] = (years[r] - years[prev]) / years[prev] * 100;
+      }
     }
+  }
+
+  let cumulRange;
+  if (colEtat) {
+    const prevRows = records.filter(r => (r[colEtat]||'').toLowerCase().includes('vision'));
+    const prevRS = [...new Set(prevRows.map(r => r[colRentree]))].sort();
+    cumulRange = prevRS.slice(0, 5);
+  } else { cumulRange = rentreesAll.slice(-5); }
+  model.PREVISION_RS = cumulRange;
+
+  if (cumulRange.length >= 2) {
+    const lastRS = cumulRange[cumulRange.length-1];
+    const idxFirst = rentreesAll.indexOf(cumulRange[0]);
+    const prevFirstRS = idxFirst > 0 ? rentreesAll[idxFirst-1] : null;
+    for (const code of Object.keys(model.EFFECTIFS)) {
+      const vLast = model.EFFECTIFS[code]?.[lastRS];
+      const vPrev = prevFirstRS != null ? model.EFFECTIFS[code]?.[prevFirstRS] : null;
+      if (vLast != null && vPrev != null) {
+        model.CUMUL[code] = vLast - vPrev;
+        if (vPrev !== 0) model.CUMUL_PCT[code] = (vLast - vPrev) / vPrev * 100;
+      }
+    }
+  }
+
+  model.RENTREES_DISPO = rentreesAll.filter(r => !RS_EXCLUDE_TIMELINE.has(r)).concat(['CUMUL']);
+
+  // Classes "variation" (annuelle)
+  {
+    let minA = 0;
+    for (const c of Object.keys(model.VARIATIONS))
+      for (const [r,v] of Object.entries(model.VARIATIONS[c]))
+        if (!RS_EXCLUDE_TIMELINE.has(r) && v < minA) minA = v;
+    const s = 25, n = 9;
+    const lo = Math.floor(minA / s) * s;
+    let breaks = Array.from({length:n+1}, (_,i)=> lo + i*s);
+    if (breaks[breaks.length-1] <= 0) breaks.push(25);
+    model.BREAKS.variation = breaks;
+    model.COLORS.variation = buildRelatifColors(breaks);
+    model.N.variation = breaks.length - 1;
+  }
+  // Classes "cumul" (variation cumulée RS26-RS30)
+  {
+    let minC = 0;
+    for (const v of Object.values(model.CUMUL)) if (v < minC) minC = v;
+    const nC = 10;
+    const rawS = Math.ceil(Math.abs(minC) / nC);
+    const sC = Math.max(5, Math.ceil(rawS/5)*5);
+    const loC = Math.floor(minC / sC) * sC;
+    let breaks = [];
+    for (let v = loC; v <= 0; v += sC) breaks.push(v);
+    if (breaks[breaks.length-1] < 0) breaks.push(0);
+    model.BREAKS.cumul = breaks;
+    model.COLORS.cumul = buildRelatifColors(breaks);
+    model.N.cumul = breaks.length - 1;
+  }
+  // Classes "effectifs" (absolu)
+  {
+    const allVals = [];
+    for (const code of Object.keys(model.EFFECTIFS))
+      for (const r of rentreesAll) if (model.EFFECTIFS[code][r] != null) allVals.push(model.EFFECTIFS[code][r]);
+    allVals.sort((a,b)=>a-b);
+    if (allVals.length > 0) {
+      const n = 8;
+      const step = Math.max(1, Math.floor(allVals.length / n));
+      let breaks = [];
+      for (let i=0;i<n;i++) breaks.push(Math.round(allVals[i*step]/50)*50);
+      breaks.push(Math.round((allVals[allVals.length-1]+50)/50)*50);
+      model.BREAKS.effectifs = breaks;
+      model.COLORS.effectifs = COLORS_ABSOLU_DEF.slice();
+      model.N.effectifs = n;
+    } else { model.BREAKS.effectifs = []; model.COLORS.effectifs = []; model.N.effectifs = 0; }
+  }
+  // Classes "pourcentage"
+  {
+    let mn=0, mx=0;
+    for (const c of Object.keys(model.VARIATIONS_PCT))
+      for (const [r,v] of Object.entries(model.VARIATIONS_PCT[c]))
+        if (!RS_EXCLUDE_TIMELINE.has(r)) { if (v<mn) mn=v; if (v>mx) mx=v; }
+    const span = (Math.max(mx,0)-Math.min(mn,0)) || 1;
+    const niceStep = x => { const p=Math.pow(10,Math.floor(Math.log10(x))); const f=x/p;
+      const nn = f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10; return nn*p; };
+    const st = niceStep(span/9);
+    const lo = Math.floor(Math.min(mn,0)/st)*st, hi = Math.ceil(Math.max(mx,0)/st)*st;
+    let breaks = [];
+    for (let v=lo; v<=hi+st*1e-6; v+=st) breaks.push(Math.round(v*100)/100);
+    if (breaks.length<2) breaks=[Math.min(0,lo), Math.max(0,hi)||1];
+    model.BREAKS.pourcentage = breaks;
+    model.COLORS.pourcentage = buildRelatifColors(breaks);
+    model.N.pourcentage = breaks.length-1;
+  }
+
+  return model;
 }
 
-document.addEventListener('DOMContentLoaded', loadData);
-</script>
+/* ══════════════════════ CHARGEMENT (session + données par échelle) ══════════════════════ */
+async function ensureScaleData(echelle) {
+  const cache = scaleCache[echelle];
+  if (cache.model) return cache;
 
+  const [geojson, records] = await Promise.all([
+    fetchGeojson(echelle === 'epci' ? CONFIG.geojsonEpci : CONFIG.geojsonCirco),
+    postJson(echelle === 'epci' ? CONFIG.webhookProjEpci : CONFIG.webhookCirco, state.sessId),
+  ]);
+  cache.geojson = geojson;
+  cache.records = records;
+  cache.model = buildModel(records, echelle);
+  cache.codeProp = echelle === 'epci' ? 'code' : 'UAI_circo';
+  return cache;
+}
+
+/* ══════════════════════ CARTE (Leaflet) ══════════════════════ */
+const map = L.map('map', { zoomControl: false, zoomSnap: 0.25, zoomDelta: 0.25 });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd', maxZoom: 19,
+}).addTo(map);
+let geojsonLayer = null, labelMarkers = [];
+let legendControl = null;
+let lastFitBounds = null;
+
+function ringCentroid(ring) {
+  let lat=0,lng=0,area=0,n=ring.length;
+  for (let i=0;i<n-1;i++){const [x0,y0]=ring[i],[x1,y1]=ring[i+1];const a=x0*y1-x1*y0;area+=a;lng+=(x0+x1)*a;lat+=(y0+y1)*a;}
+  area/=2;
+  if (Math.abs(area)<1e-12){const lats=ring.map(c=>c[1]),lngs=ring.map(c=>c[0]);
+    return [(Math.min(...lats)+Math.max(...lats))/2,(Math.min(...lngs)+Math.max(...lngs))/2];}
+  return [lat/(6*area), lng/(6*area)];
+}
+function featureCenter(feature) {
+  const geom = feature.geometry;
+  const rings = geom.type === 'Polygon' ? geom.coordinates : geom.coordinates.map(p=>p[0]);
+  const mainRing = rings.reduce((b,r)=>r.length>b.length?r:b, []);
+  return ringCentroid(mainRing);
+}
+function wrapName(name) {
+  const short = String(name)
+    .replace(/^Communauté de Communes\s*/i,'CC ').replace(/^Communauté d'Agglomération\s*/i,'CA ')
+    .replace(/^Communauté Urbaine\s*/i,'CU ').replace(/^Métropole\s*/i,'Met. ').trim();
+  const words = short.split(' '); const lines=[]; let cur='';
+  for (const w of words){ if(!cur) cur=w; else if((cur+' '+w).length<=18) cur+=' '+w; else {lines.push(cur); cur=w;} }
+  if (cur) lines.push(cur);
+  return lines.join('<br>');
+}
+
+function currentRentree() {
+  const cache = scaleCache[state.echelle];
+  if (!cache.model || state.rentreeIdx == null) return null;
+  return cache.model.RENTREES_DISPO[state.rentreeIdx];
+}
+function isCumulMode() { return currentRentree() === 'CUMUL' && state.type === 'variation'; }
+
+function getVal(code) {
+  const cache = scaleCache[state.echelle];
+  const r = currentRentree();
+  if (state.type === 'effectifs') return (cache.model.EFFECTIFS[code]||{})[r] ?? null;
+  if (r === 'CUMUL') return state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null);
+  if (state.type === 'pourcentage') return (cache.model.VARIATIONS_PCT[code]||{})[r] ?? null;
+  return (cache.model.VARIATIONS[code]||{})[r] ?? null;
+}
+function getColor(val) {
+  if (val == null) return '#dddddd';
+  const cache = scaleCache[state.echelle];
+  const breaks = cache.model.BREAKS[state.type], colors = cache.model.COLORS[state.type], n = cache.model.N[state.type];
+  if (!breaks || !breaks.length) return '#dddddd';
+  for (let i=0;i<n;i++) if (val < breaks[i+1]) return colors[i];
+  return colors[n-1];
+}
+function formatVal(v) {
+  if (v == null) return '';
+  if (state.type === 'effectifs') return Math.round(v).toLocaleString('fr-FR') + ' él.';
+  const sign = v>0 ? '+' : '';
+  if (state.type === 'pourcentage') return sign + v.toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' %';
+  return sign + Math.round(v).toLocaleString('fr-FR') + ' él.';
+}
+
+function styleFeature(feature) {
+  const cache = scaleCache[state.echelle];
+  const code = String(feature.properties[cache.codeProp]);
+  return { fillColor: getColor(getVal(code)), fillOpacity: 1, color: '#333', weight: 1.2, opacity: 0.85 };
+}
+function onEachFeature(feature, layer) {
+  layer.on({
+    mouseover(e){ e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
+    mouseout(e){ geojsonLayer.resetStyle(e.target); },
+    click(){ onFeatureClick(feature, layer); },
+  });
+}
+function onFeatureClick(feature, layer) {
+  if (state.mode !== 'interne') return;
+  if (!(currentRentree() === 'CUMUL' && state.type === 'variation')) return;
+  map.fitBounds(layer.getBounds(), { padding: [20,20] });
+  // Couche "Écoles" : intégration à venir (drill-down par point-dans-polygone).
+}
+function clearLabels(){ labelMarkers.forEach(m=>m.remove()); labelMarkers=[]; }
+function addLabels() {
+  const cache = scaleCache[state.echelle];
+  for (const feature of cache.geojson.features) {
+    const code = String(feature.properties[cache.codeProp]);
+    const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+    const center = featureCenter(feature);
+    const delta = getVal(code);
+    let varHtml = '';
+    if (delta != null) {
+      const cls = delta>0?'var-pos':delta<0?'var-neg':'var-zero';
+      varHtml = `<span class="epci-variation ${cls}">${formatVal(delta)}</span>`;
+    }
+    const nameText = wrapName(nom);
+    const nLines = (nameText.match(/<br>/g)||[]).length + 1;
+    const anchorY = Math.round((nLines*19 + (delta!=null?20:0)) / 2);
+    const icon = L.divIcon({ className:'epci-label', html:`<div class="epci-label-inner">${nameText}${varHtml}</div>`,
+      iconSize:[150,null], iconAnchor:[75,anchorY] });
+    labelMarkers.push(L.marker(center, {icon, interactive:false}).addTo(map));
+  }
+}
+function fmtLegendRange(lo, hi) {
+  if (lo==null||hi==null) return '';
+  if (state.type === 'effectifs') return lo.toLocaleString('fr-FR') + ' à ' + (hi-1).toLocaleString('fr-FR') + ' élèves';
+  const isPct = state.type === 'pourcentage';
+  const unit = isPct ? ' %' : ' élèves';
+  const fmt = isPct ? v=>v.toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}) : v=>v.toLocaleString('fr-FR');
+  if (hi<=0) return fmt(hi) + ' à ' + fmt(lo) + unit;
+  const fmtLo = lo===0 ? (isPct?'0,0':'0') : '+'+fmt(lo);
+  return fmtLo + ' à +' + fmt(hi) + unit;
+}
+function legendTitle() {
+  const cumul = isCumulMode();
+  if (state.type === 'effectifs') return "Nombre d'élèves";
+  if (state.type === 'pourcentage') return cumul ? "Variation cumulée (%) RS26–RS30" : "Variation (%) par rapport à n−1";
+  return cumul ? "Variation en nombre d'élèves cumulée RS26-RS30" : "Variation du nombre d'élèves par rapport à n−1";
+}
+function updateLegend() {
+  if (legendControl) { legendControl.remove(); legendControl = null; }
+  const cache = scaleCache[state.echelle];
+  legendControl = L.control({ position: 'bottomright' });
+  legendControl.onAdd = function () {
+    const breaks = cache.model.BREAKS[state.type], colors = cache.model.COLORS[state.type], n = cache.model.N[state.type];
+    const div = L.DomUtil.create('div','legend');
+    if (!breaks || breaks.length < 2 || !n) { div.innerHTML = `<h4>${legendTitle()}</h4>`; return div; }
+    let html = `<h4>${legendTitle()}</h4>`;
+    for (let i = n-1; i >= 0; i--) {
+      html += `<div class="legend-item"><div class="legend-color" style="background:${colors[i]}"></div><span>${fmtLegendRange(breaks[i], breaks[i+1])}</span></div>`;
+    }
+    div.innerHTML = html;
+    return div;
+  };
+  legendControl.addTo(map);
+}
+
+function renderMap() {
+  const cache = scaleCache[state.echelle];
+  if (geojsonLayer) geojsonLayer.remove();
+  clearLabels();
+  geojsonLayer = L.geoJSON(cache.geojson, { style: styleFeature, onEachFeature }).addTo(map);
+  lastFitBounds = geojsonLayer.getBounds();
+  map.fitBounds(lastFitBounds, { padding: [10,10] });
+  addLabels();
+  updateLegend();
+}
+
+/* ── Frise (RS19…RS30 + Cumul) ── */
+function buildTimeline() {
+  const cache = scaleCache[state.echelle];
+  const tlRail = document.getElementById('tl-rail'), tlZones = document.getElementById('tl-zones');
+  tlRail.innerHTML = ''; tlZones.innerHTML = '';
+  const rentrees = cache.model.RENTREES_DISPO.filter(r => state.type !== 'effectifs' || r !== 'CUMUL');
+  let idxPrev = rentrees.findIndex(r => r === 'CUMUL' || r > 'RS25');
+  if (idxPrev < 0) idxPrev = rentrees.length - 1;
+  const nPrev = rentrees.length - idxPrev;
+  const zc = document.createElement('div'); zc.className='tl-zone constat'; zc.style.flex=idxPrev;
+  zc.innerHTML = '<span class="tl-zone-label">Constat</span>'; tlZones.appendChild(zc);
+  const zp = document.createElement('div'); zp.className='tl-zone previsions'; zp.style.flex=nPrev;
+  zp.innerHTML = '<span class="tl-zone-label">Prévisions</span>'; tlZones.appendChild(zp);
+  rentrees.forEach((r,i) => {
+    const isCumul = r === 'CUMUL';
+    const item = document.createElement('div');
+    item.className = 'tl-item' + (isCumul?' cumul':'') + (r===currentRentree()?' active':'');
+    item.innerHTML = `<span class="tl-label">${isCumul?'Cumul<br>RS26–RS30':r}</span><div class="tl-dot"></div>`;
+    item.addEventListener('click', () => {
+      state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(r);
+      buildTimeline();
+      if (geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
+      updateTitle();
+    });
+    tlRail.appendChild(item);
+  });
+}
+
+/* ══════════════════════ TITRE / NAVIGATION ══════════════════════ */
+function scaleLabel() { return state.echelle === 'epci' ? 'EPCI' : 'circonscriptions'; }
+function typeLabel() {
+  if (state.type === 'effectifs') return "des effectifs";
+  if (state.type === 'pourcentage') return "en pourcentage de variation";
+  return "en variation du nombre d'élèves";
+}
+function updateTitle() {
+  const r = currentRentree();
+  const periode = r === 'CUMUL' ? 'RS26 à RS30 (cumul)' : (r || '');
+  document.getElementById('page-title').textContent =
+    `Prévisions d'effectifs du 1er degré public par ${scaleLabel()} — ${periode} — ${typeLabel()}`;
+}
+
+function showPane(vue) {
+  document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('show'));
+  document.getElementById('pane-' + vue).classList.add('show');
+  if (vue === 'carte') setTimeout(() => map.invalidateSize(), 50);
+}
+
+async function renderCurrentView() {
+  try {
+    const cache = await ensureScaleData(state.echelle);
+    if (state.rentreeIdx == null || state.rentreeIdx >= cache.model.RENTREES_DISPO.length) {
+      const idxRS26 = cache.model.RENTREES_DISPO.indexOf('RS26');
+      state.rentreeIdx = idxRS26 >= 0 ? idxRS26 : 0;
+    }
+    updateTitle();
+    showPane(state.vue);
+    if (state.vue === 'carte') {
+      buildTimeline();
+      renderMap();
+    }
+    // Courbes / Tableau : intégration à venir.
+  } catch (err) {
+    showSessionError(`Erreur lors du chargement des données : ${err.message}`);
+  }
+}
+
+function showSessionError(html) {
+  const el = document.getElementById('session-error');
+  document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('show'));
+  el.style.display = 'flex';
+  el.innerHTML = html;
+}
+
+/* ══════════════════════ ÉVÉNEMENTS UI ══════════════════════ */
+function setSeg(containerId, dataAttr, value, onChange) {
+  const container = document.getElementById(containerId);
+  container.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset[dataAttr] === value);
+    btn.onclick = () => {
+      if (btn.dataset[dataAttr] === value) return;
+      onChange(btn.dataset[dataAttr]);
+    };
+  });
+}
+function refreshSegButtons() {
+  setSeg('seg-vue', 'vue', state.vue, v => { state.vue = v; state.rentreeIdx = null; refreshSegButtons(); renderCurrentView(); });
+  setSeg('seg-type', 'type', state.type, v => { state.type = v; refreshSegButtons(); renderCurrentView(); });
+}
+
+document.getElementById('switch-echelle').addEventListener('click', () => {
+  state.echelle = state.echelle === 'epci' ? 'circo' : 'epci';
+  state.rentreeIdx = null;
+  document.getElementById('track-echelle').classList.toggle('on', state.echelle === 'circo');
+  document.getElementById('opt-epci').classList.toggle('on', state.echelle === 'epci');
+  document.getElementById('opt-circo').classList.toggle('on', state.echelle === 'circo');
+  renderCurrentView();
+});
+document.getElementById('switch-mode').addEventListener('click', () => {
+  state.mode = state.mode === 'presentation' ? 'interne' : 'presentation';
+  const interne = state.mode === 'interne';
+  document.getElementById('track-mode').classList.toggle('on', interne);
+  document.getElementById('opt-presentation').classList.toggle('on', !interne);
+  document.getElementById('opt-interne').classList.toggle('on', interne);
+  document.getElementById('seg-export').style.display = interne ? 'flex' : 'none';
+});
+document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
+document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+  if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
+});
+document.getElementById('seg-export').addEventListener('click', e => {
+  const btn = e.target.closest('[data-export]');
+  if (!btn) return;
+  alert("Export " + btn.dataset.export.toUpperCase() + " : intégration à venir.");
+});
+
+/* ══════════════════════ INITIALISATION ══════════════════════ */
+async function init() {
+  refreshSegButtons();
+  try {
+    const session = await postJson(CONFIG.webhookSession, state.sessId);
+    if (session.status === 'inactive') {
+      showSessionError(session.message);
+      document.getElementById('page-title').textContent = 'Session non autorisée';
+      return;
+    }
+  } catch (err) {
+    showSessionError(`Erreur lors de la vérification de la session : ${err.message}`);
+    document.getElementById('page-title').textContent = 'Erreur';
+    return;
+  }
+  await renderCurrentView();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
 </body>
 </html>
