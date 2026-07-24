@@ -72,7 +72,7 @@ button, select { font-family: inherit; }
   position: relative;
   transition: width 0.18s ease;
 }
-#sidebar.collapsed { width: 3rem; }
+#sidebar.collapsed { width: 4rem; }
 #sidebar-toggle {
   position: absolute; top: 0.55rem; right: 0.5rem; z-index: 5;
   width: 1.7rem; height: 1.7rem; border-radius: 50%;
@@ -176,7 +176,7 @@ button, select { font-family: inherit; }
 #sidebar.collapsed .nav-section.discrete { display: none; }
 #sidebar.collapsed .seg.seg-icons { flex-direction: column; gap: 0.4rem; align-items: center; }
 #sidebar.collapsed .seg.seg-icons .seg-btn {
-  width: 1.9rem; aspect-ratio: 1 / 1; flex: 0 0 auto; padding: 0;
+  width: 2.4rem; aspect-ratio: 1 / 1; flex: 0 0 auto; padding: 0;
 }
 #sidebar.collapsed .seg.seg-icons .seg-btn span { display: none; }
 #sidebar.collapsed .seg.seg-icons .seg-btn i { font-size: 1rem; }
@@ -301,6 +301,81 @@ button, select { font-family: inherit; }
   text-align: center; padding: 2rem; font-size: 1.15rem;
 }
 
+/* ── Vue Courbes ──────────────────────────────────────────────── */
+#curves-wrap { position: absolute; inset: 0; display: flex; }
+#curves-chart { flex: 1; min-width: 0; height: 100%; position: relative; }
+#curves-svg { width: 100%; height: 100%; display: block; }
+.c-grid    { stroke: #c6c6c6; stroke-width: 1; }
+.c-grid2   { stroke: #e3e3e3; stroke-width: 1; }
+.c-axis    { stroke: #888; stroke-width: 1; }
+.c-axtick  { stroke: #888; stroke-width: 1; }
+.c-zero    { stroke: #b0b0b0; stroke-width: 1.4; stroke-dasharray: 2 3; }
+.c-tick    { font-size: 11px; fill: #666; }
+.c-xtick   { font-size: 12px; fill: #444; font-weight: 600; }
+.c-zone-lbl{ font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.c-line    { fill: none; stroke-width: 2; opacity: 0.9; transition: opacity .15s, stroke-width .15s; }
+.c-line.dim{ opacity: 0.12; }
+.c-line.hi { stroke-width: 3.4; opacity: 1; }
+.c-dot     { transition: opacity .15s; }
+.c-dot.dim { opacity: 0.12; }
+#curves-legend {
+  flex-shrink: 0; width: 13rem; align-self: stretch; overflow: auto;
+  background: #fafafa; border-left: 1px solid var(--border-default-grey); padding: 0.7rem;
+  font-size: 0.72rem;
+}
+#curves-legend .lg-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-mention-grey); margin-bottom: 0.5rem; }
+#curves-legend .lg-row {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.2rem; margin-bottom: 0.15rem;
+  cursor: pointer; border-radius: 0.2rem;
+}
+#curves-legend .lg-row:hover { background: var(--background-alt-blue-france); }
+#curves-legend .lg-row.off { opacity: 0.4; }
+#curves-legend .lg-row.active { background: var(--background-alt-blue-france); font-weight: 700; }
+#curves-legend .lg-all { color: var(--blue-france-main-525); font-weight: 700; margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-default-grey); }
+#curves-legend .lg-all.disabled { color: #bbb; cursor: default; opacity: 0.7; }
+#curves-legend .lg-allicon { width: 1rem; text-align: center; flex-shrink: 0; }
+#curves-legend .lg-swatch { width: 1.1rem; height: 0.2rem; border-radius: 0.15rem; flex-shrink: 0; }
+#curves-legend .lg-name { white-space: nowrap; color: var(--text-default-grey); font-size: 0.8rem; }
+
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 2000; display: none;
+  background: #2d2d2d; color: #fff; font-size: 0.72rem; line-height: 1.4;
+  padding: 0.35rem 0.55rem; border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  white-space: nowrap;
+}
+
+/* ── Vue Tableau (heatmap) ────────────────────────────────────── */
+#heat-wrap { position: absolute; inset: 0; overflow: auto; padding: 0.8rem; }
+#heat-grid { display: grid; gap: 2px; width: 100%; grid-auto-rows: minmax(1.6rem, 1fr); }
+.h-cell { display: flex; align-items: center; justify-content: center; padding: 0.25rem 0.4rem;
+  font-size: 0.78rem; min-height: 1.6rem; transition: opacity .12s; }
+.h-cell.row-dim { opacity: 0.22; }
+.h-corner { background: transparent; }
+.h-zone { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-mention-grey); justify-content: center; padding: 0.2rem 0.3rem; }
+.h-zone.previsions { color: #b06a00;
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255,170,30,0.11) 5px 8px); }
+.h-yhead { font-size: 0.85rem; font-weight: 700; color: var(--text-default-grey); flex-direction: column;
+  line-height: 1.15; text-align: center; border-bottom: 2px solid var(--text-default-grey); }
+.h-yhead.prev { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255,170,30,0.10) 5px 8px); }
+.h-name { justify-content: flex-start; font-size: 0.85rem; font-weight: 600; color: var(--text-default-grey);
+  position: sticky; left: 0; background: var(--background-default-grey); z-index: 2; padding-right: 0.6rem; white-space: nowrap; }
+.h-val.prev { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(110,110,110,0.08) 5px 8px); }
+.h-cumul { font-weight: 800; color: var(--text-default-grey); background: transparent !important;
+  background-image: none !important; border-left: 1px solid #ccc; }
+.h-yhead.h-cumul { color: var(--text-default-grey); }
+.h-total { font-weight: 800; color: var(--text-default-grey); background: #ececec !important;
+  background-image: none !important; border-top: 2px solid var(--text-default-grey); }
+.h-total.h-name { background: #ececec; }
+.h-total.h-cumul { background: #e3e3e3 !important; }
+.h-empty { color: #bbb; }
+.h-yhead.sortable { cursor: pointer; }
+.h-yhead.sortable:hover { color: #000; }
+.sort-tri { font-size: 0.66rem; line-height: 1; margin-top: 2px; color: #bbb; user-select: none; }
+.h-yhead.sort-active .sort-tri { color: var(--blue-france-main-525); }
+
 @media (max-width: 860px) {
   #body-wrap { flex-direction: column; }
   #sidebar { width: auto !important; border-right: none; border-bottom: 1px solid var(--border-default-grey); }
@@ -406,15 +481,21 @@ button, select { font-family: inherit; }
       </div>
 
       <div id="pane-courbes" class="view-pane">
-        <div class="placeholder">Vue Courbes — en cours d'intégration.</div>
+        <div id="curves-wrap">
+          <div id="curves-chart"><svg id="curves-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+          <div id="curves-legend"></div>
+        </div>
       </div>
 
       <div id="pane-tableau" class="view-pane">
-        <div class="placeholder">Vue Tableau — en cours d'intégration.</div>
+        <div id="heat-wrap">
+          <div id="heat-grid"></div>
+        </div>
       </div>
     </div>
   </div>
 </div>
+<div id="tooltip"></div>
 
 <script>
 window.onerror = function(msg, url, line) {
@@ -693,14 +774,14 @@ function currentRentree() {
 }
 function isCumulMode() { return currentRentree() === 'CUMUL' && state.type === 'variation'; }
 
-function getVal(code) {
+function getValAt(code, r) {
   const cache = scaleCache[state.echelle];
-  const r = currentRentree();
   if (state.type === 'effectifs') return (cache.model.EFFECTIFS[code]||{})[r] ?? null;
   if (r === 'CUMUL') return state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null);
   if (state.type === 'pourcentage') return (cache.model.VARIATIONS_PCT[code]||{})[r] ?? null;
   return (cache.model.VARIATIONS[code]||{})[r] ?? null;
 }
+function getVal(code) { return getValAt(code, currentRentree()); }
 function getColor(val) {
   if (val == null) return '#dddddd';
   const cache = scaleCache[state.echelle];
@@ -1197,12 +1278,19 @@ function periodWord() {
   return (r && r !== 'CUMUL' && r <= 'RS25') ? 'Constats' : 'Prévisions';
 }
 function updateTitle() {
-  const r = currentRentree();
-  const periode = r === 'CUMUL' ? 'RS26 à RS30 (cumul)' : (r || '');
   const unite = typeLabel();
   const uniteCap = unite.charAt(0).toUpperCase() + unite.slice(1);
+  let mainWord, periodPart;
+  if (state.vue === 'carte') {
+    const r = currentRentree();
+    mainWord = periodWord();
+    periodPart = ' — ' + (r === 'CUMUL' ? 'RS26 à RS30 (cumul)' : (r || ''));
+  } else {
+    mainWord = 'Évolution';
+    periodPart = '';
+  }
   document.getElementById('page-title').innerHTML =
-    `${periodWord()} d'effectifs du 1er degré public par ${scaleLabel()} — ${periode}`
+    `${mainWord} d'effectifs du 1er degré public par ${scaleLabel()}${periodPart}`
     + `<span class="title-unit">${uniteCap}</span>`;
 }
 
@@ -1210,6 +1298,517 @@ function showPane(vue) {
   document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('show'));
   document.getElementById('pane-' + vue).classList.add('show');
   if (vue === 'carte') setTimeout(() => map.invalidateSize(), 50);
+}
+
+/* ══════════════════════ VUE COURBES ══════════════════════ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+const tooltipEl = document.getElementById('tooltip');
+function showTip(html, x, y) {
+  tooltipEl.innerHTML = html; tooltipEl.style.display = 'block';
+  tooltipEl.style.left = (x + 12) + 'px'; tooltipEl.style.top = (y + 12) + 'px';
+}
+function hideTip() { tooltipEl.style.display = 'none'; }
+
+const LINE_PALETTE = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf','#393b79','#637939'];
+let focusCodes = new Set();
+
+function sortedCodes() {
+  const cache = scaleCache[state.echelle];
+  return Object.keys(cache.model.EFFECTIFS).sort((a,b) =>
+    (cache.model.NOM_BY_CODE[a]||a).localeCompare(cache.model.NOM_BY_CODE[b]||b, 'fr'));
+}
+function colorByCode(code) {
+  const codes = sortedCodes();
+  return LINE_PALETTE[Math.max(0, codes.indexOf(code)) % LINE_PALETTE.length];
+}
+function legendOrder() {
+  if (state.type === 'pourcentage') return sortedCodes();
+  const cache = scaleCache[state.echelle];
+  const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
+  const yr = years.length ? years[years.length-1] : null;
+  return sortedCodes().sort((a,b) => {
+    const va = yr ? getValAt(a,yr) : null, vb = yr ? getValAt(b,yr) : null;
+    if (va == null && vb == null) return (cache.model.NOM_BY_CODE[a]||a).localeCompare(cache.model.NOM_BY_CODE[b]||b, 'fr');
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return vb - va;
+  });
+}
+function firstPrevIdx(years) {
+  const prevSet = new Set(scaleCache[state.echelle].model.PREVISION_RS);
+  for (let i = 0; i < years.length; i++) if (prevSet.has(years[i])) return i;
+  return -1;
+}
+
+function renderCurves() {
+  const cache = scaleCache[state.echelle];
+  const chart = document.getElementById('curves-chart');
+  const svg = document.getElementById('curves-svg');
+  svg.innerHTML = '';
+  const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
+  if (years.length === 0) return;
+
+  const W = chart.clientWidth || 800, H = chart.clientHeight || 500;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const mL = 64, mR = 64, mT = 34, mB = 34;
+  const plotW = Math.max(10, W - mL - mR), plotH = Math.max(10, H - mT - mB);
+  const n = years.length;
+  const x = i => mL + (n === 1 ? plotW/2 : i * plotW / (n - 1));
+  const codes = sortedCodes();
+
+  let lo = Infinity, hi = -Infinity;
+  for (const c of codes) for (const r of years) {
+    const v = getValAt(c, r);
+    if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  if (state.type !== 'effectifs') { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  let mainStep, subStep;
+  if (state.type === 'effectifs') { mainStep = 500; subStep = 250; }
+  else if (state.type === 'pourcentage') { mainStep = 1; subStep = 0.25; }
+  else { mainStep = 50; subStep = 25; }
+  lo = Math.floor(lo / mainStep) * mainStep;
+  hi = Math.ceil(hi / mainStep) * mainStep;
+  if (lo === hi) hi = lo + mainStep;
+  const y = v => mT + plotH - (v - lo) / (hi - lo) * plotH;
+
+  const fp = firstPrevIdx(years);
+  const idxRS25 = fp >= 1 ? fp - 1 : (fp === 0 ? -1 : years.length - 1);
+  let dashFromIdx = null;
+  if (fp >= 1) dashFromIdx = fp - 1; else if (fp === 0) dashFromIdx = 0;
+  let labelBoundaryX = fp >= 1 ? (x(fp-1) + x(fp)) / 2 : (fp === 0 ? mL : null);
+
+  if (labelBoundaryX != null && labelBoundaryX < mL + plotW) {
+    const defs = el('defs', {});
+    const pat = el('pattern', { id:'prevStripesCurve', width:8, height:8, patternUnits:'userSpaceOnUse', patternTransform:'rotate(135)' });
+    pat.appendChild(el('rect', { width:3, height:8, fill:'#ffaa1e', 'fill-opacity':0.12 }));
+    defs.appendChild(pat); svg.appendChild(defs);
+    svg.appendChild(el('rect', { x:labelBoundaryX, y:mT, width:(mL+plotW)-labelBoundaryX, height:plotH, fill:'url(#prevStripesCurve)' }));
+  }
+
+  const fmtTick = val => state.type === 'pourcentage'
+    ? (Math.round(val*100)/100).toLocaleString('fr-FR') + ' %'
+    : Math.round(val).toLocaleString('fr-FR');
+  const isMainVal = v => Math.abs(v / mainStep - Math.round(v / mainStep)) < 1e-6;
+  const nSub = Math.round((hi - lo) / subStep);
+  for (let i = 0; i <= nSub; i++) {
+    const v = lo + i * subStep;
+    if (isMainVal(v)) continue;
+    const yy = y(v);
+    svg.appendChild(el('line', { class:'c-grid2', x1:mL, y1:yy, x2:mL+plotW, y2:yy }));
+    svg.appendChild(el('line', { class:'c-axtick', x1:mL-4, y1:yy, x2:mL, y2:yy }));
+    svg.appendChild(el('line', { class:'c-axtick', x1:mL+plotW, y1:yy, x2:mL+plotW+4, y2:yy }));
+  }
+  const nMain = Math.max(1, Math.round((hi - lo) / mainStep));
+  const stride = Math.max(1, Math.ceil(16 / (plotH / nMain)));
+  for (let i = 0; i <= nMain; i++) {
+    const v = lo + i * mainStep, yy = y(v);
+    svg.appendChild(el('line', { class:'c-grid', x1:mL, y1:yy, x2:mL+plotW, y2:yy }));
+    svg.appendChild(el('line', { class:'c-axtick', x1:mL-7, y1:yy, x2:mL, y2:yy }));
+    svg.appendChild(el('line', { class:'c-axtick', x1:mL+plotW, y1:yy, x2:mL+plotW+7, y2:yy }));
+    if (i % stride === 0) {
+      const tx = el('text', { class:'c-tick', x:mL-10, y:yy+3, 'text-anchor':'end' }); tx.textContent = fmtTick(v); svg.appendChild(tx);
+      const txR = el('text', { class:'c-tick', x:mL+plotW+10, y:yy+3, 'text-anchor':'start' }); txR.textContent = fmtTick(v); svg.appendChild(txR);
+    }
+  }
+  if (state.type !== 'effectifs' && lo < 0 && hi > 0) {
+    svg.appendChild(el('line', { class:'c-zero', x1:mL, y1:y(0), x2:mL+plotW, y2:y(0) }));
+  }
+
+  svg.appendChild(el('line', { class:'c-axis', x1:mL, y1:mT+plotH, x2:mL+plotW, y2:mT+plotH }));
+  svg.appendChild(el('line', { class:'c-axis', x1:mL, y1:mT, x2:mL, y2:mT+plotH }));
+  svg.appendChild(el('line', { class:'c-axis', x1:mL+plotW, y1:mT, x2:mL+plotW, y2:mT+plotH }));
+  years.forEach((r,i) => {
+    const tx = el('text', { class:'c-xtick', x:x(i), y:mT+plotH+18, 'text-anchor':'middle' }); tx.textContent = r; svg.appendChild(tx);
+  });
+
+  if (labelBoundaryX != null) {
+    const lblC = el('text', { class:'c-zone-lbl', x:(mL+labelBoundaryX)/2, y:mT-10, 'text-anchor':'middle', fill:'#777' }); lblC.textContent = 'Constats'; svg.appendChild(lblC);
+    const lblP = el('text', { class:'c-zone-lbl', x:(labelBoundaryX+mL+plotW)/2, y:mT-10, 'text-anchor':'middle', fill:'#c08400' }); lblP.textContent = 'Prévisions'; svg.appendChild(lblP);
+  } else {
+    const lblC = el('text', { class:'c-zone-lbl', x:mL+plotW/2, y:mT-10, 'text-anchor':'middle', fill:'#777' }); lblC.textContent = 'Constats'; svg.appendChild(lblC);
+  }
+
+  const pathD = arr => arr.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  for (const c of codes) {
+    const color = colorByCode(c);
+    const pts = [];
+    years.forEach((r,i) => { const v = getValAt(c,r); if (v != null) pts.push([x(i), y(v), r, v, i]); });
+    if (pts.length === 0) continue;
+    const addPath = (arr, dashed) => {
+      if (arr.length < 2) return;
+      const attrs = { class:'c-line', d:pathD(arr), stroke:color, 'data-code':c };
+      if (dashed) attrs['stroke-dasharray'] = '5 4';
+      const path = el('path', attrs);
+      path.addEventListener('mouseenter', () => highlightCurve(c));
+      path.addEventListener('mouseleave', () => highlightCurve(null));
+      svg.appendChild(path);
+    };
+    if (dashFromIdx == null) addPath(pts, false);
+    else { addPath(pts.filter(p => p[4] <= dashFromIdx), false); addPath(pts.filter(p => p[4] >= dashFromIdx), true); }
+    for (const p of pts) {
+      const isConstat = p[4] <= idxRS25;
+      let mark;
+      if (isConstat) { const s=8; mark = el('rect', { class:'c-dot', x:p[0]-s/2, y:p[1]-s/2, width:s, height:s, fill:color, 'data-code':c }); }
+      else { mark = el('circle', { class:'c-dot', cx:p[0], cy:p[1], r:2.6, fill:color, 'data-code':c }); }
+      mark.addEventListener('mousemove', ev => showTip(`<strong>${cache.model.NOM_BY_CODE[c]||c}</strong><br>${p[2]} : ${formatVal(p[3])}`, ev.clientX, ev.clientY));
+      mark.addEventListener('mouseleave', hideTip);
+      svg.appendChild(mark);
+    }
+  }
+  buildCurvesLegend();
+  applyCurvesFocus();
+}
+function applyCurvesFocus() {
+  const foc = focusCodes.size > 0;
+  document.querySelectorAll('.c-line').forEach(p => { p.classList.remove('hi'); p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))); });
+  document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))));
+}
+function highlightCurve(code) {
+  if (!code) { applyCurvesFocus(); return; }
+  document.querySelectorAll('.c-line').forEach(p => { const on = p.getAttribute('data-code') === code; p.classList.toggle('hi', on); p.classList.toggle('dim', !on); });
+  document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', p.getAttribute('data-code') !== code));
+}
+function buildCurvesLegend() {
+  const cache = scaleCache[state.echelle];
+  const lg = document.getElementById('curves-legend');
+  lg.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'lg-title';
+  title.textContent = 'Évolution par ' + (state.echelle === 'epci' ? 'EPCI' : 'circonscription');
+  lg.appendChild(title);
+  const foc = focusCodes.size > 0;
+  const allRow = document.createElement('div');
+  allRow.className = 'lg-row lg-all' + (!foc ? ' disabled' : '');
+  allRow.innerHTML = `<span class="lg-allicon">▣</span><span class="lg-name">Tout afficher</span>`;
+  allRow.addEventListener('click', () => { if (focusCodes.size === 0) return; focusCodes.clear(); buildCurvesLegend(); applyCurvesFocus(); });
+  lg.appendChild(allRow);
+  for (const c of legendOrder()) {
+    const isFoc = focusCodes.has(c);
+    const row = document.createElement('div');
+    row.className = 'lg-row' + (foc && !isFoc ? ' off' : '') + (isFoc ? ' active' : '');
+    row.innerHTML = `<span class="lg-swatch" style="background:${colorByCode(c)}"></span><span class="lg-name">${cache.model.NOM_BY_CODE[c]||c}</span>`;
+    row.addEventListener('click', () => { if (focusCodes.has(c)) focusCodes.delete(c); else focusCodes.add(c); buildCurvesLegend(); applyCurvesFocus(); });
+    row.addEventListener('mouseenter', () => highlightCurve(c));
+    row.addEventListener('mouseleave', () => highlightCurve(null));
+    lg.appendChild(row);
+  }
+}
+
+/* ══════════════════════ VUE TABLEAU (heatmap) ══════════════════════ */
+let sortKey = 'NAME', sortDir = 'asc';
+function textColor(bg) {
+  if (!bg || bg.length < 7) return '#222';
+  const r = parseInt(bg.substr(1,2),16), g = parseInt(bg.substr(3,2),16), b = parseInt(bg.substr(5,2),16);
+  const lum = (0.2126*r + 0.7152*g + 0.0722*b) / 255;
+  return lum < 0.55 ? '#fff' : '#1a1a1a';
+}
+function sortValue(code) {
+  const cache = scaleCache[state.echelle];
+  if (sortKey === 'NAME') return null;
+  if (sortKey === 'CUMUL') return state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null);
+  return getValAt(code, sortKey);
+}
+function sortedCodesBy() {
+  const cache = scaleCache[state.echelle];
+  const codes = Object.keys(cache.model.EFFECTIFS);
+  if (sortKey === 'NAME') {
+    codes.sort((a,b) => (cache.model.NOM_BY_CODE[a]||a).localeCompare(cache.model.NOM_BY_CODE[b]||b, 'fr'));
+    if (sortDir === 'desc') codes.reverse();
+    return codes;
+  }
+  const dir = sortDir === 'asc' ? 1 : -1;
+  codes.sort((a,b) => {
+    const va = sortValue(a), vb = sortValue(b);
+    if (va == null && vb == null) return (cache.model.NOM_BY_CODE[a]||a).localeCompare(cache.model.NOM_BY_CODE[b]||b, 'fr');
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return (va - vb) * dir;
+  });
+  return codes;
+}
+function sumEff(r) {
+  const cache = scaleCache[state.echelle];
+  let s = null;
+  for (const code of Object.keys(cache.model.EFFECTIFS)) { const v = cache.model.EFFECTIFS[code]?.[r]; if (v != null) s = (s ?? 0) + v; }
+  return s;
+}
+function totalForYear(r) {
+  if (state.type === 'effectifs') return sumEff(r);
+  const idx = RENTREES_ALL.indexOf(r);
+  const prev = idx > 0 ? RENTREES_ALL[idx-1] : null;
+  const a = sumEff(r), b = prev ? sumEff(prev) : null;
+  if (a == null || b == null) return null;
+  if (state.type === 'pourcentage') return b !== 0 ? (a-b)/b*100 : null;
+  return a - b;
+}
+function totalCumul() {
+  const range = scaleCache[state.echelle].model.PREVISION_RS;
+  if (!range || range.length < 1) return null;
+  const lastRS = range[range.length-1];
+  const idxFirst = RENTREES_ALL.indexOf(range[0]);
+  const prevRS = idxFirst > 0 ? RENTREES_ALL[idxFirst-1] : null;
+  const a = sumEff(lastRS), b = prevRS ? sumEff(prevRS) : null;
+  if (a == null || b == null) return null;
+  if (state.type === 'pourcentage') return b !== 0 ? (a-b)/b*100 : null;
+  return a - b;
+}
+function setSort(key) {
+  if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortKey = key; sortDir = key === 'NAME' ? 'asc' : 'desc'; }
+  renderHeatmap();
+}
+function makeHeader(labelHTML, key, extraClass) {
+  const h = document.createElement('div');
+  const active = sortKey === key;
+  h.className = 'h-cell h-yhead sortable' + (extraClass ? ' ' + extraClass : '') + (active ? ' sort-active' : '');
+  const tri = active ? (sortDir === 'asc' ? '▲' : '▼') : '▽';
+  h.innerHTML = `<span>${labelHTML}</span><span class="sort-tri">${tri}</span>`;
+  h.title = 'Trier';
+  h.addEventListener('click', () => setSort(key));
+  return h;
+}
+function bindHeatRowHover() {
+  const grid = document.getElementById('heat-grid');
+  if (!grid || grid.dataset.hoverBound) return;
+  grid.dataset.hoverBound = '1';
+  let lastRow = null;
+  const apply = r => grid.querySelectorAll('[data-row]').forEach(cell => cell.classList.toggle('row-dim', r != null && cell.dataset.row !== r));
+  grid.addEventListener('mousemove', e => {
+    const cell = e.target.closest('[data-row]');
+    const r = cell ? cell.dataset.row : null;
+    if (r === lastRow) return;
+    lastRow = r; apply(r);
+  });
+  grid.addEventListener('mouseleave', () => { lastRow = null; apply(null); });
+}
+function renderHeatmap() {
+  const cache = scaleCache[state.echelle];
+  const grid = document.getElementById('heat-grid');
+  grid.innerHTML = '';
+  bindHeatRowHover();
+  const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
+  if (years.length === 0) return;
+  const showCumul = state.type !== 'effectifs';
+  const fp = firstPrevIdx(years);
+  grid.style.gridTemplateColumns = `minmax(11rem,auto) repeat(${years.length}, minmax(3.4rem,1fr))` + (showCumul ? ' minmax(4.6rem,1fr)' : '');
+  const isPrev = i => fp >= 0 && i >= fp;
+  const frag = document.createDocumentFragment();
+
+  const corner = document.createElement('div'); corner.className = 'h-cell h-corner'; frag.appendChild(corner);
+  const nConstat = fp < 0 ? years.length : fp;
+  const nPrevYears = fp < 0 ? 0 : years.length - fp;
+  if (nConstat > 0) { const zc = document.createElement('div'); zc.className = 'h-cell h-zone constat'; zc.style.gridColumn = `span ${nConstat}`; zc.textContent = 'Constats'; frag.appendChild(zc); }
+  if (nPrevYears > 0) { const zp = document.createElement('div'); zp.className = 'h-cell h-zone previsions'; zp.style.gridColumn = `span ${nPrevYears}`; zp.textContent = 'Prévisions'; frag.appendChild(zp); }
+  if (showCumul) { const zCum = document.createElement('div'); zCum.className = 'h-cell h-corner'; frag.appendChild(zCum); }
+
+  const hName = makeHeader(state.echelle === 'epci' ? 'EPCI' : 'Circonscription', 'NAME', 'h-name');
+  hName.style.borderBottom = '2px solid #2d2d2d';
+  frag.appendChild(hName);
+  years.forEach((r,i) => frag.appendChild(makeHeader(r, r, isPrev(i) ? 'prev' : '')));
+  if (showCumul) frag.appendChild(makeHeader('Cumul<br>RS26-RS30', 'CUMUL', 'h-cumul'));
+
+  for (const code of sortedCodesBy()) {
+    const nameCell = document.createElement('div'); nameCell.className = 'h-cell h-name'; nameCell.dataset.row = code;
+    nameCell.textContent = cache.model.NOM_BY_CODE[code] || code; frag.appendChild(nameCell);
+    years.forEach((r,i) => {
+      const v = getValAt(code, r);
+      const cell = document.createElement('div');
+      cell.className = 'h-cell h-val' + (isPrev(i) ? ' prev' : '');
+      cell.dataset.row = code;
+      if (v == null) { cell.classList.add('h-empty'); cell.textContent = '·'; }
+      else {
+        const bg = getColor(v);
+        cell.style.background = bg; cell.style.color = textColor(bg);
+        cell.textContent = formatVal(v);
+        cell.title = `${cache.model.NOM_BY_CODE[code]||code} — ${r} : ${formatVal(v)}`;
+      }
+      frag.appendChild(cell);
+    });
+    if (showCumul) {
+      const v = state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null);
+      const cell = document.createElement('div'); cell.className = 'h-cell h-cumul'; cell.dataset.row = code;
+      if (v == null) { cell.classList.add('h-empty'); cell.textContent = '·'; }
+      else { cell.textContent = formatVal(v); cell.title = `${cache.model.NOM_BY_CODE[code]||code} — Cumul RS26-RS30 : ${formatVal(v)}`; }
+      frag.appendChild(cell);
+    }
+  }
+  const tName = document.createElement('div'); tName.className = 'h-cell h-name h-total'; tName.dataset.row = '__TOTAL__'; tName.textContent = 'TOTAL'; frag.appendChild(tName);
+  years.forEach(r => {
+    const v = totalForYear(r);
+    const cell = document.createElement('div'); cell.className = 'h-cell h-total'; cell.dataset.row = '__TOTAL__';
+    cell.textContent = v == null ? '·' : formatVal(v);
+    if (v != null) cell.title = `TOTAL — ${r} : ${formatVal(v)}`;
+    frag.appendChild(cell);
+  });
+  if (showCumul) {
+    const v = totalCumul();
+    const cell = document.createElement('div'); cell.className = 'h-cell h-total h-cumul'; cell.dataset.row = '__TOTAL__';
+    cell.textContent = v == null ? '·' : formatVal(v);
+    if (v != null) cell.title = `TOTAL — Cumul RS26-RS30 : ${formatVal(v)}`;
+    frag.appendChild(cell);
+  }
+  grid.appendChild(frag);
+}
+
+/* ══════════════════════ EXPORT (SVG / PNG / XLSX) ══════════════════════ */
+function exportName(ext) {
+  const d = new Date().toISOString().slice(0,10);
+  return `${state.echelle}_${state.vue}_${state.type}_${d}.${ext}`;
+}
+function triggerDownload(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+}
+function escXml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function currentTitleText() {
+  return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
+}
+const EXPORT_W = 1980, EXPORT_H = 1200;
+function wrapExportSVG(inner, cw, ch) {
+  const sc = Math.min(EXPORT_W/cw, EXPORT_H/ch);
+  const tx = (EXPORT_W-cw*sc)/2, ty = (EXPORT_H-ch*sc)/2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
+    + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
+    + `<g transform="translate(${tx.toFixed(1)},${ty.toFixed(1)}) scale(${sc.toFixed(4)})">${inner}</g></svg>`;
+}
+function exportTitleSVG(titleTxt) {
+  const titleW = Math.ceil(String(titleTxt).length * 9);
+  const pad = 7, tx = 12, ty = 22;
+  return `<rect x="${tx-pad}" y="2" width="${titleW+pad*2}" height="26" fill="white" stroke="#000" stroke-width="0.8"/>`
+    + `<text x="${tx}" y="${ty}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:16px;fill:#2d2d2d">${escXml(titleTxt)}</text>`;
+}
+const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
+.c-grid{stroke:#c6c6c6;stroke-width:1}.c-grid2{stroke:#e3e3e3;stroke-width:1}
+.c-axis{stroke:#888;stroke-width:1}.c-axtick{stroke:#888;stroke-width:1}
+.c-zero{stroke:#b0b0b0;stroke-width:1.4;stroke-dasharray:2 3}
+.c-tick{font-size:15px;fill:#555}.c-xtick{font-size:16px;fill:#333;font-weight:700}
+.c-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.08em}
+.c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}`;
+function serializeCurvesSVG() {
+  const cache = scaleCache[state.echelle];
+  const src = document.getElementById('curves-svg');
+  const vb = (src.getAttribute('viewBox') || '0 0 800 500').split(/\s+/).map(Number);
+  const W = vb[2], H = vb[3];
+  const titleTxt = escXml(currentTitleText());
+  const TH = 30;
+  const codes = legendOrder();
+  const foc = focusCodes.size > 0;
+  const LW = 230, padL = 12, lineH = 18, rowGap = 8, topY = 36;
+  const availChars = Math.max(6, Math.floor((LW - 2*padL - 26) / 7.8));
+  const wrap = t => {
+    const words = String(t).split(/\s+/); const lines = []; let cur = '';
+    for (const w of words) { const test = cur ? cur+' '+w : w; if (test.length <= availChars) cur = test; else { if (cur) lines.push(cur); cur = w; } }
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [''];
+  };
+  let ly = topY;
+  let leg = `<text x="${W+padL}" y="24" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:13px;letter-spacing:0.5px;fill:#888">ÉVOLUTION PAR ${state.echelle==='epci'?'EPCI':'CIRCONSCRIPTION'}</text>`;
+  for (const c of codes) {
+    const lines = wrap(cache.model.NOM_BY_CODE[c] || c);
+    const op = (foc && !focusCodes.has(c)) ? ' opacity="0.4"' : '';
+    leg += `<g${op}><rect x="${W+padL}" y="${(ly+lineH-12).toFixed(1)}" width="20" height="4.5" rx="2" fill="${colorByCode(c)}"/>`;
+    lines.forEach((ln,j) => { leg += `<text x="${W+padL+26}" y="${(ly+lineH*(j+1)).toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;fill:#333">${escXml(ln)}</text>`; });
+    leg += `</g>`;
+    ly += lines.length*lineH + rowGap;
+  }
+  const legendH = ly + 8;
+  const contentH = Math.max(H, legendH);
+  const totalW = W + LW, totalH = TH + contentH;
+  const legPanel = `<rect x="${W}" y="0" width="${LW}" height="${contentH}" fill="#fafafa" stroke="#e0e0e0" stroke-width="1"/>` + leg;
+  const inner = `<style>${CURVE_EXPORT_CSS}</style>`
+    + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
+    + `<g transform="translate(0,${TH})">` + src.innerHTML + legPanel + `</g>`
+    + exportTitleSVG(titleTxt);
+  return wrapExportSVG(inner, totalW, totalH);
+}
+function heatmapToSVG() {
+  const grid = document.getElementById('heat-grid');
+  const cells = [...grid.children];
+  const gb = grid.getBoundingClientRect();
+  const OY = 30;
+  const W = Math.ceil(grid.scrollWidth), H = Math.ceil(grid.scrollHeight) + OY;
+  const parts = [
+    `<defs><pattern id="expPrev" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">`
+      + `<rect width="3" height="9" fill="#ffaa1e" fill-opacity="0.18"/></pattern></defs>`,
+    `<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`,
+  ];
+  for (const cell of cells) {
+    const r = cell.getBoundingClientRect();
+    const cx = r.left - gb.left + grid.scrollLeft, cy = r.top - gb.top + grid.scrollTop + OY;
+    const w = r.width, h = r.height;
+    const cs = getComputedStyle(cell);
+    const bg = cs.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      parts.push(`<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${bg}"/>`);
+    }
+    if (cell.classList.contains('previsions') || cell.classList.contains('prev')) {
+      parts.push(`<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="url(#expPrev)"/>`);
+    }
+    const lines = (cell.innerText || cell.textContent || '').split('\n').map(s => s.trim()).filter(Boolean);
+    if (lines.length) {
+      const color = cs.color || '#222', fw = cs.fontWeight || '400';
+      const fs = parseFloat(cs.fontSize) || 13;
+      const anchor = cs.textAlign === 'left' || cs.justifyContent === 'flex-start' ? 'start' : 'middle';
+      const tx = anchor === 'start' ? cx + 6 : cx + w/2;
+      const lineH = fs * 1.15;
+      let ty = cy + h/2 - (lines.length*lineH)/2 + fs*0.85;
+      for (const ln of lines) {
+        parts.push(`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" style="font-family:Arial,Helvetica,sans-serif;font-size:${fs.toFixed(1)}px;font-weight:${fw};fill:${color}">${escXml(ln)}</text>`);
+        ty += lineH;
+      }
+    }
+  }
+  const inner = parts.join('') + exportTitleSVG(escXml(currentTitleText()));
+  return wrapExportSVG(inner, W, H);
+}
+function svgToPngBlob(svgString, width, height) {
+  return new Promise((resolve, reject) => {
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,width,height);
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Échec de conversion PNG')), 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Échec de chargement du SVG pour conversion PNG')); };
+    img.src = url;
+  });
+}
+function exportTableauXLSX() {
+  const cache = scaleCache[state.echelle];
+  const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
+  const showCumul = state.type !== 'effectifs';
+  const header = [state.echelle === 'epci' ? 'EPCI' : 'Circonscription', ...years];
+  if (showCumul) header.push('Cumul RS26-RS30');
+  const rows = [header];
+  for (const code of sortedCodesBy()) {
+    const row = [cache.model.NOM_BY_CODE[code] || code];
+    for (const r of years) { const v = getValAt(code, r); row.push(v == null ? '' : Math.round(v*100)/100); }
+    if (showCumul) { const v = state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null); row.push(v == null ? '' : Math.round(v*100)/100); }
+    rows.push(row);
+  }
+  const totalRow = ['TOTAL'];
+  for (const r of years) { const v = totalForYear(r); totalRow.push(v == null ? '' : Math.round(v*100)/100); }
+  if (showCumul) { const v = totalCumul(); totalRow.push(v == null ? '' : Math.round(v*100)/100); }
+  rows.push(totalRow);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Données');
+  XLSX.writeFile(wb, exportName('xlsx'));
 }
 
 async function renderCurrentView() {
@@ -1228,8 +1827,11 @@ async function renderCurrentView() {
     if (state.vue === 'carte') {
       buildTimeline();
       renderMap();
+    } else if (state.vue === 'courbes') {
+      renderCurves();
+    } else if (state.vue === 'tableau') {
+      renderHeatmap();
     }
-    // Courbes / Tableau : intégration à venir.
   } catch (err) {
     showSessionError(`Erreur lors du chargement des données : ${err.message}`);
   }
@@ -1297,6 +1899,7 @@ scheduleSidebarAutoCollapse();
 function toggleEchelle() {
   state.echelle = state.echelle === 'epci' ? 'circo' : 'epci';
   state.rentreeIdx = null;
+  focusCodes.clear();
   document.getElementById('track-echelle').classList.toggle('on', state.echelle === 'circo');
   document.getElementById('opt-epci').classList.toggle('on', state.echelle === 'epci');
   document.getElementById('opt-circo').classList.toggle('on', state.echelle === 'circo');
@@ -1320,11 +1923,34 @@ document.getElementById('info-panel-toggle').addEventListener('click', () => {
 document.getElementById('btn-toggle-legend').addEventListener('click', () => {
   document.getElementById('map-legend').classList.toggle('legend-hidden');
 });
-document.getElementById('sel-export').addEventListener('change', e => {
+document.getElementById('sel-export').addEventListener('change', async e => {
   const format = e.target.value;
   e.target.selectedIndex = 0;
   if (!format) return;
-  alert("Export " + format.toUpperCase() + " : intégration à venir.");
+  try {
+    if (state.vue === 'carte') {
+      alert("L'export de la vue Carte n'est pas encore disponible.");
+      return;
+    }
+    if (format === 'xlsx') {
+      if (state.vue === 'tableau') exportTableauXLSX();
+      else alert("L'export Excel n'est disponible que pour la vue Tableau.");
+      return;
+    }
+    const svgString = state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
+    if (format === 'svg') {
+      triggerDownload(exportName('svg'), new Blob([svgString], { type: 'image/svg+xml' }));
+    } else if (format === 'png') {
+      const blob = await svgToPngBlob(svgString, EXPORT_W, EXPORT_H);
+      triggerDownload(exportName('png'), blob);
+    }
+  } catch (err) {
+    alert('Export échoué : ' + err.message);
+    console.error('[dataviz] Erreur export :', err);
+  }
+});
+window.addEventListener('resize', () => {
+  if (state.vue === 'courbes' && document.getElementById('pane-courbes').classList.contains('show')) renderCurves();
 });
 
 /* ══════════════════════ INITIALISATION ══════════════════════ */
