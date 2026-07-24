@@ -45,7 +45,7 @@ async function loadData() {
 
         statusEl.hidden = true;
         resultEl.hidden = false;
-        resultEl.textContent = JSON.stringify({ session, projections }, null, 2);
+        resultEl.textContent = JSON.stringify(projections, null, 2);
     } catch (err) {
         statusEl.textContent = `Erreur lors du chargement des données : ${err.message}`;
     }
