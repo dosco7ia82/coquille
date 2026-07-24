@@ -253,8 +253,7 @@ button, select { font-family: inherit; }
 }
 #map-info-panel.show { display: block; }
 #map-info-panel.collapsed { width: 2.6rem; padding: 0.5rem 0.3rem; overflow: hidden; }
-#map-info-panel.collapsed #info-panel-content,
-#map-info-panel.collapsed #info-panel-close { display: none; }
+#map-info-panel.collapsed #info-panel-content { display: none; }
 #info-panel-toggle {
   position: absolute; top: 0.5rem; left: 0.5rem; z-index: 6;
   width: 1.6rem; height: 1.6rem; border-radius: 50%;
@@ -265,12 +264,7 @@ button, select { font-family: inherit; }
 #info-panel-toggle:hover { color: var(--blue-france-main-525); border-color: var(--blue-france-main-525); }
 #map-info-panel.collapsed #info-panel-toggle { position: static; margin: 0 auto; }
 #map-info-panel.collapsed #info-panel-toggle i { transform: rotate(180deg); }
-#info-panel-close {
-  position: absolute; top: 0.4rem; right: 0.5rem; border: none; background: transparent;
-  font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--text-mention-grey);
-}
-#info-panel-close:hover { color: var(--text-default-grey); }
-#info-feature-name { margin: 0 1.6rem 0.3rem 0; font-size: 1.02rem; color: var(--blue-france-main-525); font-weight: 700; }
+#info-feature-name { margin: 0 0 0.3rem; font-size: 1.02rem; color: var(--blue-france-main-525); font-weight: 700; }
 #info-feature-value { margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--text-default-grey); }
 #info-school-block { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-default-grey); }
 #info-school-title { margin: 0 0 0.15rem; font-size: 0.9rem; color: var(--text-default-grey); font-weight: 700; line-height: 1.3; }
@@ -348,18 +342,18 @@ button, select { font-family: inherit; }
       <div class="nav-section">
         <div class="nav-title">Vue</div>
         <div class="seg seg-icons" id="seg-vue">
-          <button type="button" class="seg-btn active" data-vue="carte"><i class="fa-solid fa-earth-europe"></i><span>Cartes</span></button>
-          <button type="button" class="seg-btn" data-vue="courbes"><i class="fa-solid fa-chart-line"></i><span>Courbes</span></button>
-          <button type="button" class="seg-btn" data-vue="tableau"><i class="fa-solid fa-table-cells"></i><span>Tableau</span></button>
+          <button type="button" class="seg-btn active" data-vue="carte" title="Cartes"><i class="fa-solid fa-earth-europe"></i><span>Cartes</span></button>
+          <button type="button" class="seg-btn" data-vue="courbes" title="Courbes"><i class="fa-solid fa-chart-line"></i><span>Courbes</span></button>
+          <button type="button" class="seg-btn" data-vue="tableau" title="Tableau"><i class="fa-solid fa-table-cells"></i><span>Tableau</span></button>
         </div>
       </div>
 
       <div class="nav-section">
         <div class="nav-title">Unité</div>
         <div class="seg seg-icons" id="seg-type">
-          <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i><span>Effectifs</span></button>
-          <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i><span>Variation</span></button>
-          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i><span>Pourcent.</span></button>
+          <button type="button" class="seg-btn" data-type="effectifs" title="Effectifs"><i class="fa-solid fa-people-group"></i><span>Effectifs</span></button>
+          <button type="button" class="seg-btn active" data-type="variation" title="Variation"><i class="fa-solid fa-plus-minus"></i><span>Variation</span></button>
+          <button type="button" class="seg-btn" data-type="pourcentage" title="Pourcentage"><i class="fa-solid fa-percent"></i><span>Pourcent.</span></button>
         </div>
       </div>
 
@@ -398,7 +392,6 @@ button, select { font-family: inherit; }
             <button type="button" id="info-panel-toggle" title="Réduire/déployer le panneau" aria-label="Réduire/déployer le panneau">
               <i class="fa-solid fa-chevron-right"></i>
             </button>
-            <button type="button" id="info-panel-close" aria-label="Fermer">&times;</button>
             <div id="info-panel-content">
               <h3 id="info-feature-name"></h3>
               <p id="info-feature-value"></p>
@@ -664,7 +657,7 @@ async function ensureScaleData(echelle) {
 }
 
 /* ══════════════════════ CARTE (Leaflet) ══════════════════════ */
-const map = L.map('map', { zoomControl: false, zoomSnap: 0.1, zoomDelta: 0.1 });
+const map = L.map('map', { zoomControl: false, zoomSnap: 0.25, zoomDelta: 0.25 });
 function addRasterFallbackBasemap() {
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/attributions">CARTO</a>',
@@ -771,7 +764,7 @@ function onFeatureClick(feature, layer) {
   map.fitBounds(layer.getBounds(), { padding: [20,20], animate: false });
   if (!drillActive) {
     clearLabels();
-    if (geojsonLayer) geojsonLayer.eachLayer(l => l.setStyle({ weight: 4, color: '#ff6600', fillOpacity: 0 }));
+    if (geojsonLayer) geojsonLayer.eachLayer(l => l.setStyle({ weight: 4, color: '#111', fillOpacity: 0 }));
     drillActive = true;
   }
   showSchoolsForFeature();
@@ -809,7 +802,40 @@ function fmtSchoolPct(v) {
   const sign = v > 0 ? '+' : '';
   return sign + v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
 }
+/* ── Rattachement école ↔ EPCI/circo (pour le titre du volet) ── */
+function pointInRing(pt, ring) {
+  const [x, y] = pt;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointInPolygonGeom(pt, geom) {
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.some(rings => {
+    if (!pointInRing(pt, rings[0])) return false;
+    for (let k = 1; k < rings.length; k++) if (pointInRing(pt, rings[k])) return false;
+    return true;
+  });
+}
+function findContainingFeature(lng, lat) {
+  const cache = scaleCache[state.echelle];
+  if (!cache.geojson) return null;
+  return cache.geojson.features.find(f => pointInPolygonGeom([lng, lat], f.geometry)) || null;
+}
 function showSchoolInfo(school) {
+  const feature = findContainingFeature(school.lng, school.lat);
+  if (feature) {
+    const cache = scaleCache[state.echelle];
+    const code = String(feature.properties[cache.codeProp]);
+    const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+    const label = state.echelle === 'circo' ? `Circonscription : ${nom}` : nom;
+    document.getElementById('info-feature-name').textContent = label;
+    document.getElementById('info-feature-value').textContent = formatVal(getVal(code));
+  }
   document.getElementById('info-school-title').textContent = schoolDisplayName(school);
   document.getElementById('info-school-uai').textContent = school.uai;
   const rsRows = RENTREES_ALL.filter(r => r >= 'RS21');
@@ -1173,6 +1199,11 @@ function buildTimeline() {
     item.addEventListener('click', () => {
       state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(r);
       buildTimeline();
+      if (drillActive && !clickEnabled()) {
+        clearSchoolLayer();
+        clearSelection();
+        if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
+      }
       if (geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
       updateTitle();
     });
@@ -1262,8 +1293,15 @@ function refreshSegButtons() {
   setSeg('seg-type', 'type', state.type, v => { state.type = v; refreshSegButtons(); renderCurrentView(); });
 }
 
+function updateSidebarToggleTitle() {
+  const collapsed = document.getElementById('sidebar').classList.contains('collapsed');
+  const label = collapsed ? 'Déployer la navigation' : 'Réduire la navigation';
+  document.getElementById('sidebar-toggle').setAttribute('title', label);
+  document.getElementById('sidebar-toggle').setAttribute('aria-label', label);
+}
 document.getElementById('sidebar-toggle').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
+  updateSidebarToggleTitle();
   setTimeout(() => map.invalidateSize(), 200);
 });
 /* Repli automatique de la colonne après quelques secondes sans survol */
@@ -1275,6 +1313,7 @@ function scheduleSidebarAutoCollapse() {
   if (sidebar.classList.contains('collapsed')) return;
   sidebarAutoCollapseTimer = setTimeout(() => {
     sidebar.classList.add('collapsed');
+    updateSidebarToggleTitle();
     setTimeout(() => map.invalidateSize(), 200);
   }, SIDEBAR_AUTO_COLLAPSE_MS);
 }
@@ -1300,7 +1339,6 @@ document.getElementById('btn-zoom-reset').addEventListener('click', () => {
   updateLegend();
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
 });
-document.getElementById('info-panel-close').addEventListener('click', clearSelection);
 document.getElementById('info-panel-toggle').addEventListener('click', () => {
   document.getElementById('map-info-panel').classList.toggle('collapsed');
   updateLegendOffset();
