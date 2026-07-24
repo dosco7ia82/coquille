@@ -13,32 +13,39 @@
 
 <script>
 const CONFIG = {
-    webhookFetch: 'https://n8n.incubateur.education.gouv.fr/webhook/e7a3319e-9447-44ed-af34-8e7672e473df',
+    webhookSession: 'https://n8n.incubateur.education.gouv.fr/webhook/e7a3319e-9447-44ed-af34-8e7672e473df',
+    webhookProjectionsEpci: 'https://n8n.incubateur.education.gouv.fr/webhook/e8a3319e-9447-44ed-af34-8e7672e473df',
 };
 
 const statusEl = document.getElementById('status');
 const resultEl = document.getElementById('result');
 
+async function postJson(url, sessId) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ SessID: sessId }),
+    });
+    if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
+    return await res.json();
+}
+
 async function loadData() {
     const sessId = new URLSearchParams(window.location.search).get('SessID');
 
     try {
-        const res = await fetch(CONFIG.webhookFetch, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ SessID: sessId }),
-        });
-        if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
-        const data = await res.json();
+        const session = await postJson(CONFIG.webhookSession, sessId);
 
-        if (data.status === 'inactive') {
-            statusEl.innerHTML = data.message;
+        if (session.status === 'inactive') {
+            statusEl.innerHTML = session.message;
             return;
         }
 
+        const projections = await postJson(CONFIG.webhookProjectionsEpci, sessId);
+
         statusEl.hidden = true;
         resultEl.hidden = false;
-        resultEl.textContent = JSON.stringify(data, null, 2);
+        resultEl.textContent = JSON.stringify(projections, null, 2);
     } catch (err) {
         statusEl.textContent = `Erreur lors du chargement des données : ${err.message}`;
     }
