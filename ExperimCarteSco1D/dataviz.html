@@ -345,8 +345,14 @@ function detectColumns(sample, echelle) {
     colNom  = keys.find(k => k !== colCode && /(nom|libell|circo)/i.test(k)) || colCode;
   }
   const colRentree = find(/rent/i);
-  const colEleves  = find(/eleve|total/i);
-  const colEtat    = find(/etat|tat/i);
+  let colEleves = find(/eleve|effectif|total/i);
+  const colEtat = find(/etat|tat/i);
+  if (!colEleves) {
+    // Repli : la première colonne numérique restante (hors code/rentrée/état/nom).
+    const excluded = new Set([colCode, colRentree, colEtat, colNom]);
+    colEleves = keys.find(k => !excluded.has(k) && typeof sample[k] === 'number');
+  }
+  console.debug(`[dataviz] colonnes détectées (${echelle}) :`, { colCode, colNom, colRentree, colEleves, colEtat });
   return { colCode, colNom, colRentree, colEleves, colEtat };
 }
 
@@ -363,6 +369,7 @@ function buildModel(records, echelle) {
     const code = String(row[colCode]);
     const r = row[colRentree];
     const eff = Number(row[colEleves]);
+    if (!Number.isFinite(eff)) continue;
     if (!model.EFFECTIFS[code]) model.EFFECTIFS[code] = {};
     model.EFFECTIFS[code][r] = eff;
     if (colNom && row[colNom] && !model.NOM_BY_CODE[code]) model.NOM_BY_CODE[code] = String(row[colNom]);
