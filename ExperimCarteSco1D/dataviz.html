@@ -91,6 +91,7 @@ button, select { font-family: inherit; }
 .seg-btn:hover { background: var(--background-alt-blue-france); }
 .seg-btn.active { background: var(--blue-france-main-525); color: #fff; }
 .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+#sidebar.nav-disabled { pointer-events: none; opacity: 0.45; filter: grayscale(0.4); }
 
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -292,6 +293,8 @@ const state = {
   type: 'variation',     // 'effectifs' | 'variation' | 'pourcentage'
   mode: 'presentation',  // 'presentation' | 'interne'
   rentreeIdx: null,       // index dans RENTREES (scale courante)
+  sessionActive: null,   // null tant que non vérifié, puis true/false
+  sessionMessage: '',
 };
 
 /* Cache par échelle : { geojson, records, model } */
@@ -698,6 +701,10 @@ function showPane(vue) {
 }
 
 async function renderCurrentView() {
+  if (state.sessionActive !== true) {
+    showSessionError(state.sessionMessage || 'Accès non autorisé.');
+    return;
+  }
   try {
     const cache = await ensureScaleData(state.echelle);
     if (state.rentreeIdx == null || state.rentreeIdx >= cache.model.RENTREES_DISPO.length) {
@@ -721,6 +728,15 @@ function showSessionError(html) {
   document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('show'));
   el.style.display = 'flex';
   el.innerHTML = html;
+}
+function disableNav() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.add('nav-disabled');
+  sidebar.setAttribute('aria-disabled', 'true');
+  sidebar.querySelectorAll('button, [role="button"]').forEach(el => {
+    el.setAttribute('tabindex', '-1');
+    if (el.tagName === 'BUTTON') el.disabled = true;
+  });
 }
 
 /* ══════════════════════ ÉVÉNEMENTS UI ══════════════════════ */
@@ -772,12 +788,19 @@ async function init() {
   try {
     const session = await postJson(CONFIG.webhookSession, state.sessId);
     if (session.status === 'inactive') {
+      state.sessionActive = false;
+      state.sessionMessage = session.message;
+      disableNav();
       showSessionError(session.message);
       document.getElementById('page-title').textContent = 'Session non autorisée';
       return;
     }
+    state.sessionActive = true;
   } catch (err) {
-    showSessionError(`Erreur lors de la vérification de la session : ${err.message}`);
+    state.sessionActive = false;
+    state.sessionMessage = `Erreur lors de la vérification de la session : ${err.message}`;
+    disableNav();
+    showSessionError(state.sessionMessage);
     document.getElementById('page-title').textContent = 'Erreur';
     return;
   }
