@@ -7,6 +7,7 @@
 <title>Carte scolaire 1D — Prévisions d'effectifs</title>
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -83,7 +84,9 @@ button, select { font-family: inherit; }
   background: #fff; color: var(--text-default-grey);
   padding: 0.55em 0.7em; font-size: 0.98rem; font-weight: 600;
   text-align: left; cursor: pointer; transition: background .15s, color .15s;
+  display: flex; align-items: center; gap: 0.55em;
 }
+.seg-btn i { width: 1.1em; text-align: center; flex-shrink: 0; }
 .seg-btn:last-child { border-bottom: none; }
 .seg-btn:hover { background: var(--background-alt-blue-france); }
 .seg-btn.active { background: var(--blue-france-main-525); color: #fff; }
@@ -101,17 +104,14 @@ button, select { font-family: inherit; }
 .ts-track.on { background: var(--blue-france-main-525); }
 .ts-track.on .ts-thumb { left: 1.35rem; }
 
-.mode-note {
-  font-size: 0.68rem; color: var(--text-mention-grey); margin-top: 0.4rem; line-height: 1.35;
-}
-
 /* ── Contenu ────────────────────────────────────────────────── */
 #content { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #fff; }
 .view-pane { position: absolute; inset: 0; display: none; }
 .view-pane.show { display: block; }
 #pane-carte { display: none; }
 #pane-carte.show { display: flex; flex-direction: column; }
-#map { flex: 1; }
+#map-holder { flex: 1; position: relative; min-height: 0; }
+#map { position: absolute; inset: 0; }
 
 .placeholder {
   display: flex; align-items: center; justify-content: center;
@@ -202,23 +202,23 @@ button, select { font-family: inherit; }
       <div class="nav-section">
         <div class="nav-title">Vue</div>
         <div class="seg" id="seg-vue">
-          <button type="button" class="seg-btn active" data-vue="carte">Cartes</button>
-          <button type="button" class="seg-btn" data-vue="courbes">Courbes</button>
-          <button type="button" class="seg-btn" data-vue="tableau">Tableau</button>
+          <button type="button" class="seg-btn active" data-vue="carte"><i class="fa-solid fa-earth-europe"></i> Cartes</button>
+          <button type="button" class="seg-btn" data-vue="courbes"><i class="fa-solid fa-chart-line"></i> Courbes</button>
+          <button type="button" class="seg-btn" data-vue="tableau"><i class="fa-solid fa-table-cells"></i> Tableau</button>
         </div>
       </div>
 
       <div class="nav-section">
         <div class="nav-title">Type de données</div>
         <div class="seg" id="seg-type">
-          <button type="button" class="seg-btn" data-type="effectifs">Effectifs</button>
-          <button type="button" class="seg-btn active" data-type="variation">Variation</button>
-          <button type="button" class="seg-btn" data-type="pourcentage">Pourcentage</button>
+          <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i> Effectifs</button>
+          <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i> Variation</button>
+          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i> Pourcentage</button>
         </div>
       </div>
 
       <div class="nav-section discrete">
-        <div class="nav-title">Contrôles</div>
+        <div class="nav-title">Mode</div>
         <div class="switch-row" id="switch-mode" role="button" tabindex="0" style="margin-bottom:0.6rem;">
           <span class="switch-opt on" id="opt-presentation">Présentation</span>
           <span class="ts-track" id="track-mode"><span class="ts-thumb"></span></span>
@@ -229,7 +229,6 @@ button, select { font-family: inherit; }
           <button type="button" class="seg-btn" data-export="svg">Export SVG</button>
           <button type="button" class="seg-btn" data-export="xlsx">Export Excel</button>
         </div>
-        <div class="mode-note">En mode Interne : export des vues et clic sur la carte pour zoomer et afficher les écoles.</div>
       </div>
 
     </nav>
@@ -244,7 +243,7 @@ button, select { font-family: inherit; }
             <div id="tl-rail"></div>
           </div>
         </div>
-        <div style="flex:1; position:relative; min-height:0;">
+        <div id="map-holder">
           <div id="map"></div>
           <div id="map-controls">
             <button type="button" class="map-ctrl-btn" id="btn-zoom-in" title="Zoom avant">+</button>
@@ -674,7 +673,7 @@ function buildTimeline() {
 /* ══════════════════════ TITRE / NAVIGATION ══════════════════════ */
 function scaleLabel() { return state.echelle === 'epci' ? 'EPCI' : 'circonscriptions'; }
 function typeLabel() {
-  if (state.type === 'effectifs') return "des effectifs";
+  if (state.type === 'effectifs') return "en nombre total d'élèves";
   if (state.type === 'pourcentage') return "en pourcentage de variation";
   return "en variation du nombre d'élèves";
 }
