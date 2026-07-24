@@ -134,9 +134,10 @@ button, select { font-family: inherit; }
 .ts-track.on { background: var(--blue-france-main-525); }
 .ts-track.on .ts-thumb { left: 1.35rem; }
 
-/* Section Échelle : évite le débordement du texte (sans le scinder), switch plus compact,
-   tout en capitales, légèrement plus petit mais plus aéré */
-#switch-echelle { gap: 0.65em; padding: 0.55em 0.7em; }
+/* Section Échelle : pas de contour/padding (gagne en largeur utile), évite le
+   débordement du texte (sans le scinder), switch plus compact, tout en
+   capitales, légèrement plus petit mais plus aéré */
+#switch-echelle { border: none; padding: 0; gap: 0.65em; }
 #switch-echelle .switch-opt {
   white-space: nowrap; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.045em;
 }
@@ -144,8 +145,8 @@ button, select { font-family: inherit; }
 #switch-echelle .ts-thumb { width: 0.85rem; height: 0.85rem; }
 #switch-echelle .ts-track.on .ts-thumb { left: 1.05rem; }
 
-/* Section Mode : plus discrète, en bas de colonne, switch non centré */
-.nav-section.discrete .switch-row { padding: 0.35em 0.55em; }
+/* Section Mode : pas de contour/padding, plus discrète, en bas de colonne, switch non centré */
+.nav-section.discrete .switch-row { border: none; padding: 0; }
 .nav-section.discrete .switch-opt { font-size: 0.72rem; text-align: center; line-height: 1.3; }
 .nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0 0.4em; }
 .nav-section.discrete .ts-thumb { width: 0.85rem; height: 0.85rem; }
@@ -205,6 +206,25 @@ button, select { font-family: inherit; }
   box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }
 .map-ctrl-btn:hover { background: #fff; color: #111; }
+
+/* ── Encart latéral (clic sur un polygone en mode Interne, Cumul RS26-RS30) ── */
+#map-info-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 17rem; max-width: 82%;
+  background: #fff; border-left: 1px solid var(--border-default-grey);
+  box-shadow: -2px 0 12px rgba(0,0,0,0.18); z-index: 1100; overflow-y: auto;
+  padding: 1.1rem 1.2rem; display: none;
+}
+#map-info-panel.show { display: block; }
+#info-panel-close {
+  position: absolute; top: 0.4rem; right: 0.5rem; border: none; background: transparent;
+  font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--text-mention-grey);
+}
+#info-panel-close:hover { color: var(--text-default-grey); }
+#info-feature-name { margin: 0 1.6rem 0.3rem 0; font-size: 1.02rem; color: var(--blue-france-main-525); font-weight: 700; }
+#info-feature-value { margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--text-default-grey); }
+#info-school-block { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-default-grey); }
+#info-school-name { margin: 0 0 0.25rem; font-size: 0.88rem; color: var(--text-default-grey); font-weight: 700; }
+#info-school-value { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-default-grey); }
 
 .epci-label, .circo-label { background: transparent; border: none; box-shadow: none; pointer-events: none; text-align: center; }
 .epci-label-inner {
@@ -302,6 +322,15 @@ button, select { font-family: inherit; }
             <button type="button" class="map-ctrl-btn" id="btn-zoom-in" title="Zoom avant">+</button>
             <button type="button" class="map-ctrl-btn" id="btn-zoom-out" title="Zoom arrière">−</button>
             <button type="button" class="map-ctrl-btn" id="btn-zoom-reset" title="Réinitialiser la vue">Vue d'ensemble</button>
+          </div>
+          <div id="map-info-panel">
+            <button type="button" id="info-panel-close" aria-label="Fermer">&times;</button>
+            <h3 id="info-feature-name"></h3>
+            <p id="info-feature-value"></p>
+            <div id="info-school-block" hidden>
+              <h4 id="info-school-name"></h4>
+              <p id="info-school-value"></p>
+            </div>
           </div>
         </div>
       </div>
@@ -628,17 +657,43 @@ function styleFeature(feature) {
 function clickEnabled() {
   return state.mode === 'interne' && currentRentree() === 'CUMUL' && state.type === 'variation';
 }
+let selectedLayer = null;
 function onEachFeature(feature, layer) {
   layer.on({
-    mouseover(e){ if (!clickEnabled()) return; e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
-    mouseout(e){ if (!clickEnabled()) return; geojsonLayer.resetStyle(e.target); },
+    mouseover(e){ if (!clickEnabled() || e.target === selectedLayer) return; e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
+    mouseout(e){ if (!clickEnabled() || e.target === selectedLayer) return; geojsonLayer.resetStyle(e.target); },
     click(){ onFeatureClick(feature, layer); },
   });
 }
 function onFeatureClick(feature, layer) {
   if (!clickEnabled()) return;
   map.fitBounds(layer.getBounds(), { padding: [20,20] });
+  if (selectedLayer && selectedLayer !== layer && geojsonLayer) geojsonLayer.resetStyle(selectedLayer);
+  selectedLayer = layer;
+  layer.setStyle({ weight: 4, color: '#ff6600', fillOpacity: 0 });
+  layer.bringToFront();
   showSchoolsForFeature(feature);
+  showFeatureInfo(feature);
+}
+function clearSelection() {
+  if (selectedLayer && geojsonLayer) geojsonLayer.resetStyle(selectedLayer);
+  selectedLayer = null;
+  document.getElementById('map-info-panel').classList.remove('show');
+  document.getElementById('info-school-block').hidden = true;
+}
+function showFeatureInfo(feature) {
+  const cache = scaleCache[state.echelle];
+  const code = String(feature.properties[cache.codeProp]);
+  const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+  document.getElementById('info-feature-name').textContent = nom;
+  document.getElementById('info-feature-value').textContent = formatVal(getVal(code));
+  document.getElementById('info-school-block').hidden = true;
+  document.getElementById('map-info-panel').classList.add('show');
+}
+function showSchoolInfo(school) {
+  document.getElementById('info-school-name').textContent = school.nom || school.uai;
+  document.getElementById('info-school-value').textContent = formatSchoolVal(school.cumul);
+  document.getElementById('info-school-block').hidden = false;
 }
 
 /* ── Point-dans-polygone (rattachement écoles ↔ EPCI/circo sélectionné) ── */
@@ -817,7 +872,9 @@ async function showSchoolsForFeature(feature) {
     L.circleMarker([p.lat, p.lng], {
       radius: 6, weight: 1, color: '#333',
       fillColor: schoolColor(p.cumul, breaks, colors), fillOpacity: 0.9,
-    }).bindTooltip(`${p.nom || p.uai} : ${formatSchoolVal(p.cumul)}`).addTo(schoolLayerGroup);
+    }).bindTooltip(`${p.nom || p.uai} : ${formatSchoolVal(p.cumul)}`)
+      .on('click', () => showSchoolInfo(p))
+      .addTo(schoolLayerGroup);
   }
   schoolLayerGroup.addTo(map);
   showSchoolLegend(breaks, colors);
@@ -880,6 +937,7 @@ function updateLegend() {
 function renderMap() {
   const cache = scaleCache[state.echelle];
   clearSchoolLayer();
+  clearSelection();
   if (geojsonLayer) geojsonLayer.remove();
   clearLabels();
   geojsonLayer = L.geoJSON(cache.geojson, { style: styleFeature, onEachFeature }).addTo(map);
@@ -1015,9 +1073,11 @@ document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomI
 document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
 document.getElementById('btn-zoom-reset').addEventListener('click', () => {
   clearSchoolLayer();
+  clearSelection();
   updateLegend();
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
 });
+document.getElementById('info-panel-close').addEventListener('click', clearSelection);
 document.getElementById('sel-export').addEventListener('change', e => {
   const format = e.target.value;
   e.target.selectedIndex = 0;
