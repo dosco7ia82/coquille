@@ -95,16 +95,20 @@ button, select { font-family: inherit; }
 .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 #sidebar.nav-disabled { pointer-events: none; opacity: 0.45; filter: grayscale(0.4); }
 
-/* Sections Vue / Type de données : options côte à côte, icône au-dessus du texte */
-.seg.seg-icons { flex-direction: row; }
-.seg.seg-icons .seg-btn {
-  flex: 1; flex-direction: column; align-items: center; justify-content: center;
-  gap: 0.3em; padding: 0.6em 0.3em; text-align: center;
-  border-bottom: none; border-left: 1px solid var(--border-default-grey);
-  font-size: 0.76rem;
+/* Sections Vue / Type de données : blocs carrés côte à côte */
+.seg.seg-icons {
+  flex-direction: row; gap: 0.55rem;
+  border: none; border-radius: 0; overflow: visible; background: transparent;
 }
-.seg.seg-icons .seg-btn:first-child { border-left: none; }
-.seg.seg-icons .seg-btn i { width: auto; font-size: 1.2rem; }
+.seg.seg-icons .seg-btn {
+  flex: 1; aspect-ratio: 1 / 1;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.6em; padding: 0.4em 0.3em; text-align: center;
+  border: 1px solid var(--border-default-grey); border-radius: 0.4rem;
+  font-size: 0.74rem;
+}
+.seg.seg-icons .seg-btn.active { border-color: var(--blue-france-main-525); }
+.seg.seg-icons .seg-btn i { width: auto; font-size: 1.3rem; }
 
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -118,10 +122,23 @@ button, select { font-family: inherit; }
 .ts-track.on { background: var(--blue-france-main-525); }
 .ts-track.on .ts-thumb { left: 1.35rem; }
 
-/* Section Mode : plus discrète, en bas de colonne */
-.nav-section.discrete .switch-row { padding: 0.35em 0.55em; }
-.nav-section.discrete .switch-opt { font-size: 0.72rem; }
-.nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0 0.4em; }
+/* Section Échelle : évite le débordement du texte, switch plus compact */
+#switch-echelle { gap: 0.4em; }
+#switch-echelle .switch-opt {
+  min-width: 0; flex: 1; overflow-wrap: break-word; text-align: center;
+  font-size: 0.78rem; line-height: 1.2;
+}
+#switch-echelle .ts-track { width: 2.1rem; height: 1.1rem; margin: 0; flex-shrink: 0; }
+#switch-echelle .ts-thumb { width: 0.85rem; height: 0.85rem; }
+#switch-echelle .ts-track.on .ts-thumb { left: 1.05rem; }
+
+/* Section Mode : plus discrète, en bas de colonne, switch centré */
+.nav-section.discrete .switch-row {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 0.35em 0.55em; gap: 0.35em;
+}
+.nav-section.discrete .switch-opt { font-size: 0.72rem; text-align: center; }
+.nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0; justify-self: center; }
 .nav-section.discrete .ts-thumb { width: 0.85rem; height: 0.85rem; }
 .nav-section.discrete .ts-track.on .ts-thumb { left: 1.05rem; }
 
