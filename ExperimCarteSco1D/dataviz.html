@@ -652,7 +652,7 @@ function styleFeature(feature) {
   return { fillColor: getColor(getVal(code)), fillOpacity: 1, color: '#333', weight: 1.2, opacity: 0.85 };
 }
 function clickEnabled() {
-  return currentRentree() === 'CUMUL' && state.type === 'variation';
+  return currentRentree() === 'CUMUL' && (state.type === 'variation' || state.type === 'pourcentage');
 }
 let drillActive = false;
 function onEachFeature(feature, layer) {
@@ -760,12 +760,14 @@ function buildSchoolModel(records) {
   console.debug('[dataviz] premier enregistrement école brut :', records[0]);
   const keys = Object.keys(records[0]);
   const find = re => keys.find(k => re.test(k));
-  const colUai = find(/^uai$/i) || find(/uai/i);
+  const colUai = find(/uai.*texte/i) || find(/^uai$/i) || find(/uai/i);
   const colX = find(/coordx/i) || find(/longitude|lng|lon/i) || find(/^x$/i);
   const colY = find(/coordy/i) || find(/latitude|lat/i) || find(/^y$/i);
   const colSigle = find(/sigle/i);
   const colCommune = find(/commune/i);
   const colDenomination = find(/denomination/i) || keys.find(k => k !== colUai && k !== colSigle && k !== colCommune && /nom|libell|ecole/i.test(k));
+  const colType = find(/^nature$/i) || find(/type.*etab|nature.*etab|type.*ecole/i)
+    || keys.find(k => /^E\.[A-Z]\.[A-Z]{2}$/.test(String(records[0][k])));
 
   // La table peut être "dépivotée" (une ligne par école×rentrée, avec une
   // colonne rentrée + une colonne effectif) ou "large" (une ligne par école,
@@ -777,13 +779,14 @@ function buildSchoolModel(records) {
   }
   const isWide = Object.keys(rsKeyMap).length >= 2;
   console.debug('[dataviz] format écoles détecté :', isWide ? 'large (1 colonne par rentrée)' : 'dépivoté (1 ligne par rentrée)',
-    { colUai, colX, colY, colSigle, colDenomination, colCommune, rsKeyMap });
+    { colUai, colX, colY, colSigle, colDenomination, colCommune, colType, rsKeyMap });
 
   const makeSchool = (uai, lng, lat, row) => ({
     uai, lng, lat,
     sigle: colSigle ? row[colSigle] : '',
     denomination: colDenomination ? row[colDenomination] : uai,
     commune: colCommune ? row[colCommune] : '',
+    type: colType ? row[colType] : null,
     years: {},
   });
   const byUai = {};
@@ -846,22 +849,25 @@ async function ensureSchoolData() {
 }
 
 /* ── Couche "Écoles" (drill-down) ── */
-const SCHOOL_PALETTE = ['#feebe2','#fcc5c0','#fa9fb5','#f768a1','#dd3497','#ae017e','#7a0177','#49006a'];
 let schoolLayerGroup = null, schoolLegendControl = null;
 function clearSchoolLayer() {
   if (schoolLayerGroup) { schoolLayerGroup.remove(); schoolLayerGroup = null; }
   if (schoolLegendControl) { schoolLegendControl.remove(); schoolLegendControl = null; }
 }
-function buildSchoolBreaks(values) {
+// Classes à pas fixe (5 élèves en Variation, 1 point en Pourcentage), même
+// palette divergente que les légendes EPCI/circo (buildRelatifColors).
+function buildSchoolBreaksFixed(values, step) {
   const finite = values.filter(v => v != null && Number.isFinite(v));
   if (finite.length === 0) return { breaks: [], colors: [] };
-  let mn = Math.min(...finite), mx = Math.max(...finite);
-  if (mn === mx) { mn -= 1; mx += 1; }
-  const n = 8, step = (mx - mn) / n;
-  const breaks = Array.from({ length: n+1 }, (_, i) => mn + i*step);
-  return { breaks, colors: SCHOOL_PALETTE.slice(0, n) };
+  const mn = Math.min(...finite), mx = Math.max(...finite);
+  const lo = Math.floor(Math.min(mn, 0) / step) * step;
+  const hi = Math.ceil(Math.max(mx, 0) / step) * step;
+  const breaks = [];
+  for (let v = lo; v <= hi + step*1e-9; v += step) breaks.push(Math.round(v*100)/100);
+  if (breaks.length < 2) breaks.push(lo + step);
+  return { breaks, colors: buildRelatifColors(breaks) };
 }
-function schoolColor(val, breaks, colors) {
+function getColorFromBreaks(val, breaks, colors) {
   if (val == null || !colors.length) return '#999';
   for (let i = 0; i < colors.length - 1; i++) if (val <= breaks[i+1]) return colors[i];
   return colors[colors.length-1];
@@ -870,20 +876,32 @@ function formatSchoolVal(v) {
   const sign = v > 0 ? '+' : '';
   return sign + Math.round(v).toLocaleString('fr-FR') + ' él.';
 }
-function fmtSchoolRange(lo, hi) {
-  const fmt = v => Math.round(v).toLocaleString('fr-FR');
-  return fmt(lo) + ' à ' + fmt(hi) + ' élèves';
+function fmtSchoolPct(v) {
+  if (v == null) return '·';
+  const sign = v > 0 ? '+' : '';
+  return sign + v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
 }
-function showSchoolLegend(breaks, colors) {
+// Même style de plage que la légende EPCI/circo (fmtLegendRange).
+function fmtSchoolLegendRange(lo, hi, isPct) {
+  const unit = isPct ? ' %' : ' élèves';
+  const fmt = isPct ? v => v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : v => v.toLocaleString('fr-FR');
+  if (hi <= 0) return fmt(hi) + ' à ' + fmt(lo) + unit;
+  const fmtLo = lo === 0 ? (isPct ? '0,0' : '0') : '+' + fmt(lo);
+  return fmtLo + ' à +' + fmt(hi) + unit;
+}
+function schoolLegendTitle(isPct) {
+  return isPct ? "Variation cumulée (%) RS26–RS30" : "Variation en nombre d'élèves cumulée RS26-RS30";
+}
+function showSchoolLegend(breaks, colors, isPct) {
   if (legendControl) { legendControl.remove(); legendControl = null; }
   if (schoolLegendControl) { schoolLegendControl.remove(); schoolLegendControl = null; }
   schoolLegendControl = L.control({ position: 'bottomright' });
   schoolLegendControl.onAdd = function () {
     const div = L.DomUtil.create('div', 'legend');
-    let html = `<h4>Variation en nombre d'élèves cumulée RS26-RS30</h4>`;
+    let html = `<h4>${schoolLegendTitle(isPct)}</h4>`;
     if (!colors.length) html += `<em style="font-size:0.68rem;color:#888">Aucune école avec données.</em>`;
     for (let i = colors.length - 1; i >= 0; i--) {
-      html += `<div class="legend-item"><div class="legend-color" style="background:${colors[i]}"></div><span>${fmtSchoolRange(breaks[i], breaks[i+1])}</span></div>`;
+      html += `<div class="legend-item"><div class="legend-color" style="background:${colors[i]}"></div><span>${fmtSchoolLegendRange(breaks[i], breaks[i+1], isPct)}</span></div>`;
     }
     div.innerHTML = html;
     return div;
@@ -894,8 +912,11 @@ function schoolDisplayName(school) {
   const main = [school.sigle, school.denomination].filter(Boolean).join(' ');
   return school.commune ? `${main} (${school.commune})` : main;
 }
+// Ordre de priorité dans la grille : maternelle publique, puis élémentaire
+// publique, puis primaire (1er degré) publique.
+const SCHOOL_TYPE_ORDER = { 'E.M.PU': 0, 'E.E.PU': 1, 'E.P.PU': 2 };
 // Écarte les points-écoles trop proches à l'écran (chevauchement visuel) :
-// côte à côte si 2, grille de 2 ou 3 colonnes si plus.
+// grille aussi carrée que possible (2 à 5 colonnes), triée par type d'école.
 function declusterSchoolPoints(points) {
   const THRESHOLD_PX = 16, SPACING_PX = 14;
   const pts = points.map(p => {
@@ -917,13 +938,14 @@ function declusterSchoolPoints(points) {
         if (Math.sqrt(dx*dx + dy*dy) < THRESHOLD_PX) { visited[j] = true; stack.push(j); }
       }
     }
+    cluster.sort((a, b) => (SCHOOL_TYPE_ORDER[pts[a].school.type] ?? 99) - (SCHOOL_TYPE_ORDER[pts[b].school.type] ?? 99));
     clusters.push(cluster);
   }
   const placed = [];
   for (const cluster of clusters) {
     const n = cluster.length;
     if (n === 1) { const p = pts[cluster[0]]; placed.push({ school: p.school, x: p.x, y: p.y }); continue; }
-    const cols = n <= 2 ? 2 : (n <= 4 ? 2 : 3);
+    const cols = Math.max(2, Math.min(5, Math.round(Math.sqrt(n))));
     const rows = Math.ceil(n / cols);
     const cx = cluster.reduce((s,i) => s + pts[i].x, 0) / n;
     const cy = cluster.reduce((s,i) => s + pts[i].y, 0) / n;
@@ -945,21 +967,25 @@ async function showSchoolsForFeature() {
   let model;
   try { model = await ensureSchoolData(); }
   catch (err) { console.error('[dataviz] Erreur chargement des écoles :', err); return; }
-  const withCumul = model.points.filter(p => p.cumul != null);
+  const isPct = state.type === 'pourcentage';
+  const valueOf = p => isPct ? p.cumulPct : p.cumul;
+  const withValue = model.points.filter(p => valueOf(p) != null);
   if (schoolLayerGroup) schoolLayerGroup.remove();
-  const { breaks, colors } = buildSchoolBreaks(withCumul.map(p => p.cumul));
-  const placed = declusterSchoolPoints(withCumul);
+  const step = isPct ? 1 : 5;
+  const { breaks, colors } = buildSchoolBreaksFixed(withValue.map(valueOf), step);
+  const placed = declusterSchoolPoints(withValue);
   schoolLayerGroup = L.layerGroup();
   for (const { school: p, lat, lng } of placed) {
+    const val = valueOf(p);
     L.circleMarker([lat, lng], {
       radius: 6, weight: 1, color: '#333',
-      fillColor: schoolColor(p.cumul, breaks, colors), fillOpacity: 0.9,
-    }).bindTooltip(`${schoolDisplayName(p)} : ${formatSchoolVal(p.cumul)}`)
+      fillColor: getColorFromBreaks(val, breaks, colors), fillOpacity: 0.9,
+    }).bindTooltip(`${schoolDisplayName(p)} : ${isPct ? fmtSchoolPct(val) : formatSchoolVal(val)}`)
       .on('click', () => showSchoolInfo(p))
       .addTo(schoolLayerGroup);
   }
   schoolLayerGroup.addTo(map);
-  showSchoolLegend(breaks, colors);
+  showSchoolLegend(breaks, colors, isPct);
 }
 function clearLabels(){ labelMarkers.forEach(m=>m.remove()); labelMarkers=[]; }
 function addLabels() {
