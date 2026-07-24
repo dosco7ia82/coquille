@@ -62,9 +62,11 @@ button, select { font-family: inherit; }
   border-right: 1px solid var(--border-default-grey);
   overflow-y: auto;
   padding: 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
 }
 .nav-section { margin-bottom: 1.4rem; }
-.nav-section.discrete { margin-top: 2rem; opacity: 0.82; }
+.nav-section.discrete { margin-top: auto; margin-bottom: 0; padding-top: 1.4rem; opacity: 0.82; }
 .nav-title {
   font-size: 0.72rem;
   font-weight: 700;
@@ -93,6 +95,17 @@ button, select { font-family: inherit; }
 .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 #sidebar.nav-disabled { pointer-events: none; opacity: 0.45; filter: grayscale(0.4); }
 
+/* Sections Vue / Type de données : options côte à côte, icône au-dessus du texte */
+.seg.seg-icons { flex-direction: row; }
+.seg.seg-icons .seg-btn {
+  flex: 1; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.3em; padding: 0.6em 0.3em; text-align: center;
+  border-bottom: none; border-left: 1px solid var(--border-default-grey);
+  font-size: 0.76rem;
+}
+.seg.seg-icons .seg-btn:first-child { border-left: none; }
+.seg.seg-icons .seg-btn i { width: auto; font-size: 1.2rem; }
+
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;
   border: 1px solid var(--border-default-grey); border-radius: 0.3rem;
@@ -104,6 +117,13 @@ button, select { font-family: inherit; }
 .ts-thumb { position: absolute; width: 1.1rem; height: 1.1rem; background: #fff; border-radius: 50%; top: 0.15rem; left: 0.15rem; box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: left .2s; }
 .ts-track.on { background: var(--blue-france-main-525); }
 .ts-track.on .ts-thumb { left: 1.35rem; }
+
+/* Section Mode : plus discrète, en bas de colonne */
+.nav-section.discrete .switch-row { padding: 0.35em 0.55em; }
+.nav-section.discrete .switch-opt { font-size: 0.72rem; }
+.nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0 0.4em; }
+.nav-section.discrete .ts-thumb { width: 0.85rem; height: 0.85rem; }
+.nav-section.discrete .ts-track.on .ts-thumb { left: 1.05rem; }
 
 /* ── Contenu ────────────────────────────────────────────────── */
 #content { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #fff; }
@@ -202,28 +222,27 @@ button, select { font-family: inherit; }
 
       <div class="nav-section">
         <div class="nav-title">Vue</div>
-        <div class="seg" id="seg-vue">
-          <button type="button" class="seg-btn active" data-vue="carte"><i class="fa-solid fa-earth-europe"></i> Cartes</button>
-          <button type="button" class="seg-btn" data-vue="courbes"><i class="fa-solid fa-chart-line"></i> Courbes</button>
-          <button type="button" class="seg-btn" data-vue="tableau"><i class="fa-solid fa-table-cells"></i> Tableau</button>
+        <div class="seg seg-icons" id="seg-vue">
+          <button type="button" class="seg-btn active" data-vue="carte"><i class="fa-solid fa-earth-europe"></i><span>Cartes</span></button>
+          <button type="button" class="seg-btn" data-vue="courbes"><i class="fa-solid fa-chart-line"></i><span>Courbes</span></button>
+          <button type="button" class="seg-btn" data-vue="tableau"><i class="fa-solid fa-table-cells"></i><span>Tableau</span></button>
         </div>
       </div>
 
       <div class="nav-section">
         <div class="nav-title">Type de données</div>
-        <div class="seg" id="seg-type">
-          <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i> Effectifs</button>
-          <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i> Variation</button>
-          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i> Pourcentage</button>
+        <div class="seg seg-icons" id="seg-type">
+          <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i><span>Effectifs</span></button>
+          <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i><span>Variation</span></button>
+          <button type="button" class="seg-btn" data-type="pourcentage"><i class="fa-solid fa-percent"></i><span>Pourcentage</span></button>
         </div>
       </div>
 
       <div class="nav-section discrete">
-        <div class="nav-title">Mode</div>
         <div class="switch-row" id="switch-mode" role="button" tabindex="0" style="margin-bottom:0.6rem;">
-          <span class="switch-opt on" id="opt-presentation">Présentation</span>
+          <span class="switch-opt on" id="opt-presentation">Mode Présentation</span>
           <span class="ts-track" id="track-mode"><span class="ts-thumb"></span></span>
-          <span class="switch-opt" id="opt-interne">Interne</span>
+          <span class="switch-opt" id="opt-interne">Mode interne</span>
         </div>
         <div class="seg" id="seg-export" style="display:none;">
           <button type="button" class="seg-btn" data-export="png">Export PNG</button>
