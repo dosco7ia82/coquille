@@ -50,9 +50,15 @@ button, select { font-family: inherit; }
 }
 #header h1 {
   margin: 0;
-  font-size: clamp(1.05rem, 1.1vw + 0.7rem, 1.7rem);
+  font-size: clamp(0.88rem, 0.75vw + 0.6rem, 1.25rem);
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
+}
+#header h1 .title-unit {
+  display: block;
+  font-weight: 400;
+  font-size: 0.85em;
+  margin-top: 0.15em;
 }
 
 #body-wrap { flex: 1; display: flex; min-height: 0; }
@@ -110,7 +116,9 @@ button, select { font-family: inherit; }
   border: 1px solid var(--border-default-grey); border-radius: 0.4rem;
   font-size: 0.74rem;
 }
-.seg.seg-icons .seg-btn span { max-width: 100%; }
+.seg.seg-icons .seg-btn span {
+  max-width: 100%; hyphens: auto; -webkit-hyphens: auto; overflow-wrap: break-word;
+}
 .seg.seg-icons .seg-btn.active { border-color: var(--blue-france-main-525); }
 .seg.seg-icons .seg-btn i { width: auto; font-size: 1.3rem; }
 
@@ -126,20 +134,20 @@ button, select { font-family: inherit; }
 .ts-track.on { background: var(--blue-france-main-525); }
 .ts-track.on .ts-thumb { left: 1.35rem; }
 
-/* Section Échelle : évite le débordement du texte (sans le scinder), switch plus compact */
-#switch-echelle { gap: 0.5em; }
-#switch-echelle .switch-opt { white-space: nowrap; font-size: 0.76rem; }
+/* Section Échelle : évite le débordement du texte (sans le scinder), switch plus compact,
+   tout en capitales, légèrement plus petit mais plus aéré */
+#switch-echelle { gap: 0.65em; padding: 0.55em 0.7em; }
+#switch-echelle .switch-opt {
+  white-space: nowrap; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.045em;
+}
 #switch-echelle .ts-track { width: 2.1rem; height: 1.1rem; margin: 0; flex-shrink: 0; }
 #switch-echelle .ts-thumb { width: 0.85rem; height: 0.85rem; }
 #switch-echelle .ts-track.on .ts-thumb { left: 1.05rem; }
 
-/* Section Mode : plus discrète, en bas de colonne, switch centré */
-.nav-section.discrete .switch-row {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  padding: 0.35em 0.55em; gap: 0.35em;
-}
+/* Section Mode : plus discrète, en bas de colonne, switch non centré */
+.nav-section.discrete .switch-row { padding: 0.35em 0.55em; }
 .nav-section.discrete .switch-opt { font-size: 0.72rem; text-align: center; line-height: 1.3; }
-.nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0; justify-self: center; }
+.nav-section.discrete .ts-track { width: 2.1rem; height: 1.1rem; margin: 0 0.4em; }
 .nav-section.discrete .ts-thumb { width: 0.85rem; height: 0.85rem; }
 .nav-section.discrete .ts-track.on .ts-thumb { left: 1.05rem; }
 
@@ -254,7 +262,7 @@ button, select { font-family: inherit; }
       </div>
 
       <div class="nav-section">
-        <div class="nav-title">Type de données</div>
+        <div class="nav-title">Unité</div>
         <div class="seg seg-icons" id="seg-type">
           <button type="button" class="seg-btn" data-type="effectifs"><i class="fa-solid fa-people-group"></i><span>Effectifs</span></button>
           <button type="button" class="seg-btn active" data-type="variation"><i class="fa-solid fa-plus-minus"></i><span>Variation</span></button>
@@ -617,18 +625,165 @@ function styleFeature(feature) {
   const code = String(feature.properties[cache.codeProp]);
   return { fillColor: getColor(getVal(code)), fillOpacity: 1, color: '#333', weight: 1.2, opacity: 0.85 };
 }
+function clickEnabled() {
+  return state.mode === 'interne' && currentRentree() === 'CUMUL' && state.type === 'variation';
+}
 function onEachFeature(feature, layer) {
   layer.on({
-    mouseover(e){ e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
-    mouseout(e){ geojsonLayer.resetStyle(e.target); },
+    mouseover(e){ if (!clickEnabled()) return; e.target.setStyle({weight:3,color:'#ff6600',fillOpacity:1}); e.target.bringToFront(); },
+    mouseout(e){ if (!clickEnabled()) return; geojsonLayer.resetStyle(e.target); },
     click(){ onFeatureClick(feature, layer); },
   });
 }
 function onFeatureClick(feature, layer) {
-  if (state.mode !== 'interne') return;
-  if (!(currentRentree() === 'CUMUL' && state.type === 'variation')) return;
+  if (!clickEnabled()) return;
   map.fitBounds(layer.getBounds(), { padding: [20,20] });
-  // Couche "Écoles" : intégration à venir (drill-down par point-dans-polygone).
+  showSchoolsForFeature(feature);
+}
+
+/* ── Point-dans-polygone (rattachement écoles ↔ EPCI/circo sélectionné) ── */
+function pointInRing(pt, ring) {
+  const [x, y] = pt;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointInPolygonGeom(pt, geom) {
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.some(rings => {
+    if (!pointInRing(pt, rings[0])) return false;
+    for (let k = 1; k < rings.length; k++) if (pointInRing(pt, rings[k])) return false;
+    return true;
+  });
+}
+
+/* ── Données écoles (webhook Effectifs_RS19_RS30) ── */
+let schoolModel = null;
+function detectSchoolColumns(sample) {
+  const keys = Object.keys(sample);
+  const find = re => keys.find(k => re.test(k));
+  const colUai = find(/^uai$/i) || find(/uai/i);
+  const colX = find(/coordx/i) || find(/longitude|lng|lon/i) || find(/^x$/i);
+  const colY = find(/coordy/i) || find(/latitude|lat/i) || find(/^y$/i);
+  const colRentree = find(/rent/i);
+  const colEtat = find(/etat|tat/i);
+  let colEleves = find(/eleve|effectif|total/i);
+  if (!colEleves) {
+    const excluded = new Set([colUai, colX, colY, colRentree, colEtat]);
+    colEleves = keys.find(k => !excluded.has(k) && typeof sample[k] === 'number');
+  }
+  const colNom = keys.find(k => k !== colUai && /nom|libell|ecole/i.test(k));
+  console.debug('[dataviz] colonnes détectées (écoles) :', { colUai, colX, colY, colRentree, colEleves, colEtat, colNom });
+  return { colUai, colX, colY, colRentree, colEleves, colEtat, colNom };
+}
+function buildSchoolModel(records) {
+  const model = { points: [] };
+  if (!records || records.length === 0) return model;
+  const { colUai, colX, colY, colRentree, colEleves, colEtat, colNom } = detectSchoolColumns(records[0]);
+  const byUai = {};
+  for (const row of records) {
+    const uai = String(row[colUai]);
+    const eff = Number(row[colEleves]);
+    if (!Number.isFinite(eff)) continue;
+    if (!byUai[uai]) {
+      byUai[uai] = { uai, lng: Number(row[colX]), lat: Number(row[colY]), nom: colNom ? row[colNom] : uai, years: {} };
+    }
+    byUai[uai].years[row[colRentree]] = eff;
+  }
+  const rsSet = new Set();
+  for (const row of records) rsSet.add(row[colRentree]);
+  const rentreesAll = RENTREES_ALL.filter(r => rsSet.has(r));
+  let cumulRange;
+  if (colEtat) {
+    const prevRows = records.filter(r => (r[colEtat]||'').toLowerCase().includes('vision'));
+    const prevRS = [...new Set(prevRows.map(r => r[colRentree]))].sort();
+    cumulRange = prevRS.slice(0, 5);
+  } else { cumulRange = rentreesAll.slice(-5); }
+  for (const s of Object.values(byUai)) {
+    if (!Number.isFinite(s.lng) || !Number.isFinite(s.lat)) continue;
+    if (cumulRange.length >= 2) {
+      const lastRS = cumulRange[cumulRange.length-1];
+      const idxFirst = rentreesAll.indexOf(cumulRange[0]);
+      const prevFirstRS = idxFirst > 0 ? rentreesAll[idxFirst-1] : null;
+      const vLast = s.years[lastRS], vPrev = prevFirstRS != null ? s.years[prevFirstRS] : null;
+      if (vLast != null && vPrev != null) s.cumul = vLast - vPrev;
+    }
+    model.points.push(s);
+  }
+  return model;
+}
+async function ensureSchoolData() {
+  if (schoolModel) return schoolModel;
+  const records = await postJson(CONFIG.webhookEcoles, state.sessId);
+  schoolModel = buildSchoolModel(records);
+  return schoolModel;
+}
+
+/* ── Couche "Écoles" (drill-down) ── */
+const SCHOOL_PALETTE = ['#feebe2','#fcc5c0','#fa9fb5','#f768a1','#dd3497','#ae017e','#7a0177','#49006a'];
+let schoolLayerGroup = null, schoolLegendControl = null;
+function clearSchoolLayer() {
+  if (schoolLayerGroup) { schoolLayerGroup.remove(); schoolLayerGroup = null; }
+  if (schoolLegendControl) { schoolLegendControl.remove(); schoolLegendControl = null; }
+}
+function buildSchoolBreaks(values) {
+  const finite = values.filter(v => v != null && Number.isFinite(v));
+  if (finite.length === 0) return { breaks: [], colors: [] };
+  let mn = Math.min(...finite), mx = Math.max(...finite);
+  if (mn === mx) { mn -= 1; mx += 1; }
+  const n = 8, step = (mx - mn) / n;
+  const breaks = Array.from({ length: n+1 }, (_, i) => mn + i*step);
+  return { breaks, colors: SCHOOL_PALETTE.slice(0, n) };
+}
+function schoolColor(val, breaks, colors) {
+  if (val == null || !colors.length) return '#999';
+  for (let i = 0; i < colors.length - 1; i++) if (val <= breaks[i+1]) return colors[i];
+  return colors[colors.length-1];
+}
+function formatSchoolVal(v) {
+  const sign = v > 0 ? '+' : '';
+  return sign + Math.round(v).toLocaleString('fr-FR') + ' él.';
+}
+function fmtSchoolRange(lo, hi) {
+  const fmt = v => Math.round(v).toLocaleString('fr-FR');
+  return fmt(lo) + ' à ' + fmt(hi) + ' élèves';
+}
+function showSchoolLegend(breaks, colors) {
+  if (legendControl) { legendControl.remove(); legendControl = null; }
+  if (schoolLegendControl) { schoolLegendControl.remove(); schoolLegendControl = null; }
+  schoolLegendControl = L.control({ position: 'bottomright' });
+  schoolLegendControl.onAdd = function () {
+    const div = L.DomUtil.create('div', 'legend');
+    let html = `<h4>Variation en nombre d'élèves cumulée RS26-RS30</h4>`;
+    if (!colors.length) html += `<em style="font-size:0.68rem;color:#888">Aucune école avec données.</em>`;
+    for (let i = colors.length - 1; i >= 0; i--) {
+      html += `<div class="legend-item"><div class="legend-color" style="background:${colors[i]}"></div><span>${fmtSchoolRange(breaks[i], breaks[i+1])}</span></div>`;
+    }
+    div.innerHTML = html;
+    return div;
+  };
+  schoolLegendControl.addTo(map);
+}
+async function showSchoolsForFeature(feature) {
+  let model;
+  try { model = await ensureSchoolData(); }
+  catch (err) { console.error('[dataviz] Erreur chargement des écoles :', err); return; }
+  const inside = model.points.filter(p => p.cumul != null && pointInPolygonGeom([p.lng, p.lat], feature.geometry));
+  if (schoolLayerGroup) schoolLayerGroup.remove();
+  const { breaks, colors } = buildSchoolBreaks(inside.map(p => p.cumul));
+  schoolLayerGroup = L.layerGroup();
+  for (const p of inside) {
+    L.circleMarker([p.lat, p.lng], {
+      radius: 6, weight: 1, color: '#333',
+      fillColor: schoolColor(p.cumul, breaks, colors), fillOpacity: 0.9,
+    }).bindTooltip(`${p.nom || p.uai} : ${formatSchoolVal(p.cumul)}`).addTo(schoolLayerGroup);
+  }
+  schoolLayerGroup.addTo(map);
+  showSchoolLegend(breaks, colors);
 }
 function clearLabels(){ labelMarkers.forEach(m=>m.remove()); labelMarkers=[]; }
 function addLabels() {
@@ -687,6 +842,7 @@ function updateLegend() {
 
 function renderMap() {
   const cache = scaleCache[state.echelle];
+  clearSchoolLayer();
   if (geojsonLayer) geojsonLayer.remove();
   clearLabels();
   geojsonLayer = L.geoJSON(cache.geojson, { style: styleFeature, onEachFeature }).addTo(map);
@@ -734,8 +890,11 @@ function typeLabel() {
 function updateTitle() {
   const r = currentRentree();
   const periode = r === 'CUMUL' ? 'RS26 à RS30 (cumul)' : (r || '');
-  document.getElementById('page-title').textContent =
-    `Prévisions d'effectifs du 1er degré public par ${scaleLabel()} — ${periode} — ${typeLabel()}`;
+  const unite = typeLabel();
+  const uniteCap = unite.charAt(0).toUpperCase() + unite.slice(1);
+  document.getElementById('page-title').innerHTML =
+    `Prévisions d'effectifs du 1er degré public par ${scaleLabel()} — ${periode}`
+    + `<span class="title-unit">${uniteCap}</span>`;
 }
 
 function showPane(vue) {
@@ -818,6 +977,8 @@ document.getElementById('switch-mode').addEventListener('click', () => {
 document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
 document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
 document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+  clearSchoolLayer();
+  updateLegend();
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
 });
 document.getElementById('sel-export').addEventListener('change', e => {
