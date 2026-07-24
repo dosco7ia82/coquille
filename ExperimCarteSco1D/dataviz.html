@@ -30,6 +30,12 @@ async function loadData() {
         });
         if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
         const data = await res.json();
+
+        if (data.status === 'inactive') {
+            statusEl.innerHTML = data.message;
+            return;
+        }
+
         statusEl.hidden = true;
         resultEl.hidden = false;
         resultEl.textContent = JSON.stringify(data, null, 2);
