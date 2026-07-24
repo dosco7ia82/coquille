@@ -251,16 +251,20 @@ button, select { font-family: inherit; }
 #map-info-panel.show { display: block; }
 #map-info-panel.collapsed { width: 2.6rem; padding: 0.5rem 0.3rem; overflow: hidden; }
 #map-info-panel.collapsed #info-panel-content { display: none; }
+/* Bouton hors du volet (à cheval sur son bord gauche), pour ne jamais
+   masquer le titre affiché à l'intérieur */
 #info-panel-toggle {
-  position: absolute; top: 0.5rem; left: 0.5rem; z-index: 6;
-  width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  position: absolute; top: 0.7rem; right: 20rem; z-index: 1101;
+  width: 1.7rem; height: 1.7rem; border-radius: 50%;
   border: 1px solid var(--border-default-grey); background: #fff;
   color: var(--text-mention-grey); cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 0.72rem;
+  display: none; align-items: center; justify-content: center; font-size: 0.75rem;
+  transition: right 0.18s ease;
 }
 #info-panel-toggle:hover { color: var(--blue-france-main-525); border-color: var(--blue-france-main-525); }
-#map-info-panel.collapsed #info-panel-toggle { position: static; margin: 0 auto; }
-#map-info-panel.collapsed #info-panel-toggle i { transform: rotate(180deg); }
+#info-panel-toggle.show { display: flex; }
+#info-panel-toggle.panel-collapsed { right: 2.6rem; }
+#info-panel-toggle.panel-collapsed i { transform: rotate(180deg); }
 #info-feature-name { margin: 0 0 0.3rem; font-size: 1.02rem; color: var(--blue-france-main-525); font-weight: 700; }
 #info-feature-value { margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--text-default-grey); }
 #info-school-block { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-default-grey); }
@@ -460,10 +464,10 @@ button, select { font-family: inherit; }
             <button type="button" class="map-ctrl-btn" id="btn-toggle-legend" title="Afficher/masquer la légende"><i class="fa-solid fa-list"></i></button>
           </div>
           <div id="map-legend" class="legend"></div>
+          <button type="button" id="info-panel-toggle" title="Réduire/déployer le panneau" aria-label="Réduire/déployer le panneau">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
           <div id="map-info-panel">
-            <button type="button" id="info-panel-toggle" title="Réduire/déployer le panneau" aria-label="Réduire/déployer le panneau">
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
             <div id="info-panel-content">
               <h3 id="info-feature-name"></h3>
               <p id="info-feature-value"></p>
@@ -827,8 +831,12 @@ function onFeatureClick(feature, layer) {
 }
 function updateLegendOffset() {
   const panel = document.getElementById('map-info-panel');
-  const shifted = panel.classList.contains('show') && !panel.classList.contains('collapsed');
-  document.getElementById('map-legend').classList.toggle('legend-shifted', shifted);
+  const shown = panel.classList.contains('show');
+  const collapsed = panel.classList.contains('collapsed');
+  document.getElementById('map-legend').classList.toggle('legend-shifted', shown && !collapsed);
+  const toggleBtn = document.getElementById('info-panel-toggle');
+  toggleBtn.classList.toggle('show', shown);
+  toggleBtn.classList.toggle('panel-collapsed', collapsed);
 }
 function clearSelection() {
   if (drillActive && geojsonLayer) {
