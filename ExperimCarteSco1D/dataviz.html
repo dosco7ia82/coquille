@@ -1111,6 +1111,7 @@ function showFeatureInfo(feature) {
   const label = state.echelle === 'circo' ? `Circonscription : ${nom}` : nom;
   document.getElementById('info-feature-name').textContent = label;
   const valueEl = document.getElementById('info-feature-value');
+  valueEl.hidden = false;
   if (schoolsModeActive) {
     // En mode "écoles", la carte et les points sont toujours sur le cumul
     // RS26-RS30, indépendamment du point sélectionné sur la timeline (gelée) :
@@ -1196,8 +1197,8 @@ function showSchoolInfo(school) {
     const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
     const label = state.echelle === 'circo' ? `Circonscription : ${nom}` : nom;
     document.getElementById('info-feature-name').textContent = label;
-    document.getElementById('info-feature-value').textContent = formatVal(getVal(code));
   }
+  document.getElementById('info-feature-value').hidden = true;
   document.getElementById('info-school-title').textContent = schoolDisplayName(school);
   document.getElementById('info-school-uai').textContent = school.uai;
   document.getElementById('info-school-block').hidden = false;
