@@ -2603,11 +2603,13 @@ const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif
 // Export du graphique de comparaison base 100 (volet école) : redessine le
 // chart dans un <svg> détaché (même viewBox fixe que l'affichage), puis
 // reconstitue une légende en SVG (le HTML de #info-school-chart-legend
-// n'est pas exportable tel quel). Légende en ligne(s) sous le graphique
-// (plutôt qu'une longue colonne à droite) pour équilibrer la mise en page :
-// le viewBox du chart est bas et large (420×190), une colonne verticale à
-// droite laissait donc un pavé très large et peu haut, mal centré une fois
-// mis à l'échelle dans le canvas d'export.
+// n'est pas exportable tel quel). Titre et légende sont enroulés (wrap) pour
+// tenir dans la largeur naturelle du chart (W) plutôt que d'agrandir le
+// canevas total : comme wrapExportSVG applique UNE seule échelle uniforme à
+// tout l'ensemble, tout pixel de largeur ajouté autour du chart pour loger un
+// titre/une légende plus larges se traduit par une marge morte qui rétrécit
+// d'autant l'échelle finale — donc le chart lui-même. En gardant totalW == W
+// dans le cas courant, le chart occupe toute la largeur du canevas d'export.
 function serializeSchoolCompareSVG() {
   if (!schoolCompareData || schoolCompareData.error) return null;
   const data = schoolCompareData;
@@ -2616,11 +2618,6 @@ function serializeSchoolCompareSVG() {
   const vb = (tmp.getAttribute('viewBox') || '0 0 420 190').split(/\s+/).map(Number);
   const W = vb[2], H = vb[3];
   const titleTxt = escXml(schoolCompareTitle || 'Comparaison base 100');
-  const TH = 30;
-  // Le nom d'école + de zone peut être long : la largeur totale doit couvrir
-  // le titre (même estimation de largeur qu'exportTitleSVG), sinon il déborde
-  // du canevas d'export une fois mis à l'échelle.
-  const titleBoxW = Math.ceil(String(titleTxt).length * 9) + 26;
   const baseLabel = data.years[data.baseIdx];
   const items = [
     { label: 'École', color: '#1563C2', swatch: 'line' },
@@ -2631,18 +2628,41 @@ function serializeSchoolCompareSVG() {
     { label: 'Tendance école', color: '#4DA6E8', swatch: 'dash' },
     { label: 'Delta projections', color: 'rgba(100,150,230,0.5)', swatch: 'box' },
   ];
-  const totalW = Math.max(W, 560, titleBoxW);
-  const rowGap = 20, itemGap = 22, swatchW = 20, swatchGap = 6, lineH = 20, charW = 6.6;
+
+  // Titre : sur 1 ligne s'il tient, sinon replié sur 2 lignes max, dans la
+  // largeur du chart (les mots ne sont jamais coupés).
+  const titleCharW = 9, titlePad = 7, titleTx = 12, titleLineH = 21;
+  const titleMaxChars = Math.max(10, Math.floor((W - (titleTx - titlePad) - titlePad * 2) / titleCharW));
+  const wrapWords = (t, maxChars) => {
+    const words = String(t).split(/\s+/); const lines = []; let cur = '';
+    for (const w of words) { const test = cur ? cur + ' ' + w : w; if (!cur || test.length <= maxChars) cur = test; else { lines.push(cur); cur = w; } }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+  let titleLines = wrapWords(titleTxt, titleMaxChars);
+  if (titleLines.length > 2) titleLines = [titleLines[0], titleLines.slice(1).join(' ')];
+  const titleWidestW = Math.max(...titleLines.map(l => l.length * titleCharW)) + titlePad * 2 + (titleTx - titlePad);
+  const TH = titleLines.length * titleLineH + 10;
+  let titleSvg = `<rect x="${titleTx - titlePad}" y="2" width="${(titleWidestW - (titleTx-titlePad)).toFixed(1)}" height="${(TH - 4).toFixed(1)}" fill="white" stroke="#000" stroke-width="0.8"/>`;
+  titleLines.forEach((ln, i) => {
+    titleSvg += `<text x="${titleTx}" y="${(18 + i * titleLineH).toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:16px;fill:#2d2d2d">${escXml(ln)}</text>`;
+  });
+
+  // Légende : enroulée en ligne(s) dans la largeur du chart.
+  const rowGap = 20, itemGap = 22, swatchW = 20, swatchGap = 6, lineH = 20, itemCharW = 6.6;
   const rows = [];
   let row = [], rowW = 0;
   for (const it of items) {
-    const itemW = swatchW + swatchGap + it.label.length * charW;
+    const itemW = swatchW + swatchGap + it.label.length * itemCharW;
     const addGap = row.length ? itemGap : 0;
-    if (row.length && rowW + addGap + itemW > totalW) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
+    if (row.length && rowW + addGap + itemW > W) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
     row.push({ ...it, w: itemW });
     rowW += (row.length > 1 ? itemGap : 0) + itemW;
   }
   if (row.length) rows.push({ items: row, w: rowW });
+  const legendWidestW = rows.length ? Math.max(...rows.map(r => r.w)) : 0;
+
+  const totalW = Math.max(W, titleWidestW, legendWidestW);
   let leg = '', ly = H + rowGap;
   for (const r of rows) {
     let lx = (totalW - r.w) / 2;
@@ -2662,7 +2682,7 @@ function serializeSchoolCompareSVG() {
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
     + `<g transform="translate(${chartX.toFixed(1)},${TH})">` + tmp.innerHTML + `</g>`
     + `<g transform="translate(0,${TH})">` + leg + `</g>`
-    + exportTitleSVG(titleTxt);
+    + titleSvg;
   return wrapExportSVG(inner, totalW, totalH);
 }
 async function exportSchoolCompareChart(format) {
