@@ -1029,7 +1029,10 @@ function wrapName(name) {
   const words = short.split(' '); const lines=[]; let cur='';
   for (const w of words){ if(!cur) cur=w; else if((cur+' '+w).length<=18) cur+=' '+w; else {lines.push(cur); cur=w;} }
   if (cur) lines.push(cur);
-  return lines.join('<br>');
+  // escXml par ligne (pas sur le résultat joint) : le nom vient de Grist et
+  // sert de source à une étiquette carte insérée via innerHTML — seuls les
+  // <br> ajoutés ici doivent rester des balises, le texte doit être échappé.
+  return lines.map(escXml).join('<br>');
 }
 
 function currentRentree() {
@@ -2323,7 +2326,7 @@ function renderCurves() {
       let mark, r;
       if (isConstat) { const s=8; r = s/2; mark = el('rect', { class:'c-dot', x:p[0]-s/2, y:p[1]-s/2, width:s, height:s, fill:color, 'data-code':c }); }
       else { r = 2.6; mark = el('circle', { class:'c-dot', cx:p[0], cy:p[1], r:r, fill:color, 'data-code':c }); }
-      mark.addEventListener('mousemove', ev => showTip(`<strong>${cache.model.NOM_BY_CODE[c]||c}</strong><br>${p[2]} : ${formatVal(p[3])}`, ev.clientX, ev.clientY));
+      mark.addEventListener('mousemove', ev => showTip(`<strong>${escXml(cache.model.NOM_BY_CODE[c]||c)}</strong><br>${p[2]} : ${formatVal(p[3])}`, ev.clientX, ev.clientY));
       mark.addEventListener('mouseleave', hideTip);
       svg.appendChild(mark);
       labelPts.push({ x:p[0], y:p[1], r, val:p[3], color, code:c });
@@ -2420,7 +2423,7 @@ function buildCurvesLegend() {
     const isFoc = focusCodes.has(c);
     const row = document.createElement('div');
     row.className = 'lg-row' + (foc && !isFoc ? ' off' : '') + (isFoc ? ' active' : '');
-    row.innerHTML = `<span class="lg-swatch" style="background:${colorByCode(c)}"></span><span class="lg-name">${cache.model.NOM_BY_CODE[c]||c}</span>`;
+    row.innerHTML = `<span class="lg-swatch" style="background:${colorByCode(c)}"></span><span class="lg-name">${escXml(cache.model.NOM_BY_CODE[c]||c)}</span>`;
     row.addEventListener('click', () => { if (focusCodes.has(c)) focusCodes.delete(c); else focusCodes.add(c); buildCurvesLegend(); applyCurvesFocus(); });
     row.addEventListener('mouseenter', () => highlightCurve(c));
     row.addEventListener('mouseleave', () => highlightCurve(null));
