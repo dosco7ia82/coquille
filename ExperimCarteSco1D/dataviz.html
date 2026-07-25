@@ -174,7 +174,7 @@ button, select { font-family: inherit; }
 }
 .export-select:hover { border-color: #999; }
 
-/* Boutons étiquettes carte (Afficher les valeurs / Seconde unité) : visibles
+/* Boutons étiquettes carte (Afficher les valeurs / + Autre unité) : visibles
    uniquement en vue Cartes, texte seul, côte à côte. */
 .map-label-btns { display: flex; gap: 0.35rem; margin-bottom: 0.6rem; }
 .map-label-btns[hidden] { display: none; }
@@ -189,7 +189,10 @@ button, select { font-family: inherit; }
 .btn-label-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-label-toggle:disabled:hover { background: #fff; border-color: var(--border-default-grey); }
 
-.app-version { margin: 0.7rem 0 0; text-align: center; }
+/* En dehors de .nav-section.discrete (masquée en volet replié) afin de
+   rester visible quels que soient la vue et l'état (replié) du volet. */
+.app-version { margin: auto 0 0; padding-top: 0.6rem; text-align: center; }
+#sidebar.collapsed .app-version { font-size: 0.58rem; line-height: 1.25; padding: 0.5rem 0.1rem 0; word-break: break-word; }
 
 /* Bouton "Afficher les écoles" : visible uniquement en vue Cartes */
 #section-schools { display: none; }
@@ -436,10 +439,12 @@ button, select { font-family: inherit; }
 .c-line.hi { stroke-width: 3.4; opacity: 1; }
 .c-dot     { transition: opacity .15s; }
 .c-dot.dim { opacity: 0.12; }
-.c-label-bg   { pointer-events: none; transition: opacity .15s; }
-.c-label-bg.dim { opacity: 0.1; }
-.c-label-text { pointer-events: none; font-size: 11px; font-weight: 700; fill: #fff; transition: opacity .15s; }
-.c-label-text.dim { opacity: 0.15; }
+/* Étiquettes de valeur : masquées par défaut, ne s'affichent que pour la
+   courbe survolée (sur le tracé ou sur son entrée de légende). */
+.c-label-bg   { pointer-events: none; opacity: 0; transition: opacity .15s; }
+.c-label-bg.hi { opacity: 1; }
+.c-label-text { pointer-events: none; font-size: 11px; font-weight: 700; fill: #fff; opacity: 0; transition: opacity .15s; }
+.c-label-text.hi { opacity: 1; }
 #curves-legend {
   flex-shrink: 0; width: 15rem; align-self: stretch; overflow: auto;
   background: #fafafa; border-left: 1px solid var(--border-default-grey); padding: 0.7rem;
@@ -564,7 +569,7 @@ button, select { font-family: inherit; }
       <div class="nav-section discrete">
         <div class="map-label-btns" id="map-label-btns" hidden>
           <button type="button" class="btn-label-toggle small" id="btn-toggle-values">Afficher les valeurs</button>
-          <button type="button" class="btn-label-toggle small" id="btn-toggle-unite2" hidden>Seconde unité</button>
+          <button type="button" class="btn-label-toggle small" id="btn-toggle-unite2" hidden>+ Autre unité</button>
         </div>
         <select id="sel-export" class="export-select" title="PNG/SVG : vue courante · Excel : toutes les données">
           <option value="" disabled selected>Export</option>
@@ -572,8 +577,8 @@ button, select { font-family: inherit; }
           <option value="svg">SVG</option>
           <option value="xlsx">Excel</option>
         </select>
-        <p class="small text-muted app-version" id="app-version">DSDEN 82<br>v5.5</p>
       </div>
+      <p class="small text-muted app-version" id="app-version">DSDEN 82<br>v5.5</p>
 
       </div>
     </nav>
@@ -1055,7 +1060,7 @@ function getValAt(code, r) {
 function getVal(code) { return getValAt(code, currentRentree()); }
 // Valeur de l'unité complémentaire (Variation <-> Pourcentage), pour la même
 // échelle/rentrée que la valeur principale — utilisée par le bouton carte
-// "Seconde unité" (n'a pas de sens en unité Effectifs).
+// "+ Autre unité" (n'a pas de sens en unité Effectifs).
 function getSecondaryVal(code) {
   const cache = scaleCache[state.echelle];
   const r = currentRentree();
@@ -2390,13 +2395,15 @@ function applyCurvesFocus() {
   const foc = focusCodes.size > 0;
   document.querySelectorAll('.c-line').forEach(p => { p.classList.remove('hi'); p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))); });
   document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))));
-  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))));
+  // Les étiquettes de valeur ne s'affichent que sur survol (cf. highlightCurve) :
+  // en dehors d'un survol, elles restent toutes masquées, y compris en focus.
+  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.remove('hi'));
 }
 function highlightCurve(code) {
   if (!code) { applyCurvesFocus(); return; }
   document.querySelectorAll('.c-line').forEach(p => { const on = p.getAttribute('data-code') === code; p.classList.toggle('hi', on); p.classList.toggle('dim', !on); });
   document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', p.getAttribute('data-code') !== code));
-  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.toggle('dim', p.getAttribute('data-code') !== code));
+  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.toggle('hi', p.getAttribute('data-code') === code));
 }
 function buildCurvesLegend() {
   const cache = scaleCache[state.echelle];
@@ -2616,7 +2623,7 @@ const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-tick{font-size:15px;fill:#555}.c-xtick{font-size:16px;fill:#333;font-weight:700}
 .c-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.08em}
 .c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}
-.c-label-bg.dim{opacity:0.1}.c-label-text{font-size:11px;font-weight:700;fill:#fff}.c-label-text.dim{opacity:0.15}`;
+.c-label-text{font-size:11px;font-weight:700;fill:#fff}`;
 function serializeCurvesSVG() {
   const cache = scaleCache[state.echelle];
   const src = document.getElementById('curves-svg');
@@ -3044,7 +3051,7 @@ function refreshSegButtons() {
   refreshMapLabelButtons();
 }
 // Boutons étiquettes carte, visibles uniquement en vue Cartes : "Afficher les
-// valeurs" (nom seul si désactivé) toujours présent ; "Seconde unité" (3e
+// valeurs" (nom seul si désactivé) toujours présent ; "+ Autre unité" (3e
 // ligne avec l'unité complémentaire) en plus si Variation/Pourcentage, mais
 // non actionnable tant que "Afficher les valeurs" est désactivé.
 function refreshMapLabelButtons() {
