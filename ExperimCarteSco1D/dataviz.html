@@ -187,7 +187,11 @@ button, select { font-family: inherit; }
 .btn-schools:hover { background: var(--background-alt-blue-france); }
 .btn-schools.active { background: var(--blue-france-main-525); border-color: var(--blue-france-main-525); color: #fff; }
 #sidebar.collapsed .btn-schools span { display: none; }
-#sidebar.collapsed .btn-schools { justify-content: center; padding: 0.55em; }
+#sidebar.collapsed .btn-schools {
+  width: 2.4rem; aspect-ratio: 1 / 1; flex: 0 0 auto; padding: 0; justify-content: center;
+  margin: 0 auto;
+}
+#sidebar.collapsed .btn-schools i { font-size: 1rem; }
 
 /* ── Colonne repliée : blocs options réduits (icône seule), empilés ── */
 #sidebar.collapsed .nav-title { display: none; }
@@ -235,17 +239,17 @@ button, select { font-family: inherit; }
 #tl-wrap { flex: 1; display: flex; align-items: stretch; overflow: hidden; position: relative; }
 #tl-wrap.disabled { opacity: 0.4; pointer-events: none; }
 #tl-zones { position: absolute; inset: 0; display: flex; pointer-events: none; padding: 0 0.5rem; }
-.tl-zone { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 0.3rem; }
-.tl-zone-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.45); }
+.tl-zone { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 0.6rem; }
+.tl-zone-label { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.45); }
 .tl-zone.previsions {
   background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(255,180,30,0.13) 4px, rgba(255,180,30,0.13) 8px);
   border-left: 1px solid rgba(255,255,255,0.15);
 }
 .tl-zone.previsions .tl-zone-label { color: rgba(255,200,60,0.6); }
-#tl-rail { flex: 1; display: flex; align-items: flex-end; position: relative; z-index: 2; padding: 0 0.5rem 0.6rem; }
-#tl-rail::before { content: ''; position: absolute; bottom: 1.3rem; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.28); }
+#tl-rail { flex: 1; display: flex; align-items: flex-end; position: relative; z-index: 2; padding: 0 0.5rem 0.9rem; }
+#tl-rail::before { content: ''; position: absolute; bottom: 1.6rem; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.28); }
 .tl-item { flex: 1; display: flex; flex-direction: column; align-items: center; cursor: pointer; gap: 0.25rem; }
-.tl-label { font-size: 0.68rem; font-weight: 600; color: rgba(255,255,255,0.5); white-space: nowrap; }
+.tl-label { font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.5); white-space: nowrap; }
 .tl-dot { width: 0.68rem; height: 0.68rem; border-radius: 50%; background: rgba(255,255,255,0.28); border: 2px solid rgba(255,255,255,0.4); transition: background .15s, transform .15s; }
 .tl-item:hover .tl-dot { background: rgba(255,255,255,0.6); transform: scale(1.2); }
 .tl-item:hover .tl-label { color: rgba(255,255,255,0.88); }
@@ -1111,6 +1115,7 @@ function buildSchoolModel(records) {
   const keys = Object.keys(records[0]);
   const find = re => keys.find(k => re.test(k));
   const colUai = find(/uai.*texte/i) || find(/^uai$/i) || find(/uai/i);
+  const colUaiRpi = find(/uai.*rpi/i) || find(/rpi/i);
   const colX = find(/coordx/i) || find(/longitude|lng|lon/i) || find(/^x$/i);
   const colY = find(/coordy/i) || find(/latitude|lat/i) || find(/^y$/i);
   const colSigle = find(/sigle/i);
@@ -1129,7 +1134,7 @@ function buildSchoolModel(records) {
   }
   const isWide = Object.keys(rsKeyMap).length >= 2;
   console.debug('[dataviz] format écoles détecté :', isWide ? 'large (1 colonne par rentrée)' : 'dépivoté (1 ligne par rentrée)',
-    { colUai, colX, colY, colSigle, colDenomination, colCommune, colType, rsKeyMap });
+    { colUai, colUaiRpi, colX, colY, colSigle, colDenomination, colCommune, colType, rsKeyMap });
 
   const makeSchool = (uai, lng, lat, row) => ({
     uai, lng, lat,
@@ -1137,6 +1142,7 @@ function buildSchoolModel(records) {
     denomination: colDenomination ? row[colDenomination] : uai,
     commune: colCommune ? row[colCommune] : '',
     type: colType ? row[colType] : null,
+    uaiRpi: colUaiRpi ? String(row[colUaiRpi] ?? '').trim() : '',
     years: {},
   });
   const byUai = {};
@@ -1228,16 +1234,12 @@ async function ensureRpiData() {
   rpiModel = buildRpiModel(records);
   return rpiModel;
 }
-// Rattachement école → RPI par nom de commune (seule donnée commune aux deux
-// sources : la table écoles n'a pas de code INSEE, la table RPI n'a pas
-// d'UAI d'école). Normalisation tolérante à la casse/aux accents.
-function normalizeName(s) {
-  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
-}
+// Rattachement école → RPI par UAI_RPI (colonne ajoutée à la source écoles
+// pour fiabiliser ce rapprochement ; le rattachement par nom de commune
+// produisait des incohérences).
 function findRpiForSchool(school, rpi) {
-  if (!school?.commune || !rpi?.groups?.length) return null;
-  const key = normalizeName(school.commune);
-  return rpi.groups.find(g => g.communeNames.some(n => normalizeName(n) === key)) || null;
+  if (!school?.uaiRpi || !rpi?.groups?.length) return null;
+  return rpi.groups.find(g => g.uaiRpi === school.uaiRpi) || null;
 }
 
 /* ── Contours communes (geo.api.gouv.fr) + fusion des polygones d'un RPI ──
@@ -1315,8 +1317,8 @@ function clearRpiLayer() {
 }
 function rpiPolygonStyle() {
   // Moins gras que le contour simplifié des EPCI/circo (weight 4) en mode
-  // écoles ; pointillé pour bien le distinguer, aucun remplissage.
-  return { weight: 2, color: '#111', dashArray: '5 4', fillOpacity: 0, interactive: false };
+  // écoles ; pointillé gris pour bien le distinguer, aucun remplissage.
+  return { weight: 2, color: '#777', dashArray: '5 4', fillOpacity: 0, interactive: false };
 }
 async function showRpiLayer() {
   let fc;
@@ -1429,6 +1431,22 @@ function declusterSchoolPoints(points) {
     return { school, lat: ll.lat, lng: ll.lng };
   });
 }
+// Contenu de l'infobulle d'un point-école : nom en gras, puis effectifs
+// RS25/RS26 et cumul RS26-RS30, indépendamment de l'unité affichée sur la
+// carte (variation/pourcentage colorent le point mais ne changent pas
+// l'infobulle).
+function schoolTooltipHtml(school) {
+  const fmtN = v => v == null ? '·' : Math.round(v).toLocaleString('fr-FR') + ' élèves';
+  const fmtSigned = v => {
+    if (v == null) return '·';
+    const sign = v > 0 ? '+' : '';
+    return sign + Math.round(v).toLocaleString('fr-FR') + ' élèves';
+  };
+  return `<b>${escXml(schoolDisplayName(school))}</b><br>`
+    + `Effectifs RS25 : ${fmtN(school.years.RS25)}<br>`
+    + `Effectifs RS26 : ${fmtN(school.years.RS26)}<br>`
+    + `Cumul RS26-RS30 : ${fmtSigned(school.cumul)}`;
+}
 async function showSchoolsForFeature() {
   let model;
   try { model = await ensureSchoolData(); }
@@ -1447,7 +1465,7 @@ async function showSchoolsForFeature() {
     L.circleMarker([lat, lng], {
       radius: 6, weight: 1, color: '#333',
       fillColor: getColorFromBreaks(val, breaks, colors), fillOpacity: 0.9,
-    }).bindTooltip(`${schoolDisplayName(p)} : ${isPct ? fmtSchoolPct(val) : formatSchoolVal(val)}`)
+    }).bindTooltip(schoolTooltipHtml(p))
       .on('click', () => showSchoolInfo(p))
       .addTo(schoolLayerGroup);
   }
@@ -1578,6 +1596,13 @@ function updateTitle() {
   document.getElementById('page-title').innerHTML =
     `${mainWord} des effectifs du 1er degré public par ${scaleLabel()}${periodPart}`
     + `<span class="title-unit">${uniteCap}</span>`;
+  syncTimelineHeight();
+}
+// La frise (timeline) doit avoir la même hauteur que le bandeau de titre,
+// dont la hauteur varie avec la longueur du texte (deux lignes possibles).
+function syncTimelineHeight() {
+  const h = document.getElementById('header').getBoundingClientRect().height;
+  if (h > 0) document.getElementById('map-toolbar').style.height = h + 'px';
 }
 
 function showPane(vue) {
@@ -2368,6 +2393,7 @@ document.getElementById('sel-export').addEventListener('change', async e => {
 });
 window.addEventListener('resize', () => {
   if (state.vue === 'courbes' && document.getElementById('pane-courbes').classList.contains('show')) renderCurves();
+  syncTimelineHeight();
 });
 
 /* ══════════════════════ INITIALISATION ══════════════════════ */
