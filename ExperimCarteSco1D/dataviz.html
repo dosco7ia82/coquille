@@ -456,7 +456,7 @@ button, select { font-family: inherit; }
       </div>
 
       <div class="nav-section discrete">
-        <select id="sel-export" class="export-select" title="Exporter la vue courante">
+        <select id="sel-export" class="export-select" title="PNG/SVG : vue courante · Excel : toutes les données">
           <option value="" disabled selected>Export</option>
           <option value="png">PNG</option>
           <option value="svg">SVG</option>
@@ -1920,27 +1920,116 @@ function svgToPngBlob(svgString, width, height) {
     img.src = url;
   });
 }
-function exportTableauXLSX() {
-  const cache = scaleCache[state.echelle];
+// Lignes d'une feuille EPCI/Circonscription : même structure que la vue
+// Tableau (non-dépivoté, une colonne par année, Cumul RS26-RS30 en dernière
+// colonne sauf en unité Effectifs). Suppose state.echelle/state.type déjà
+// positionnés sur (echelle, type) par l'appelant (sortedCodesBy/getValAt/
+// totalForYear/totalCumul lisent l'état global).
+function buildScaleSheetRows(echelle, type) {
+  const cache = scaleCache[echelle];
   const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
-  const showCumul = state.type !== 'effectifs';
-  const header = [state.echelle === 'epci' ? 'EPCI' : 'Circonscription', ...years];
+  const showCumul = type !== 'effectifs';
+  const header = [echelle === 'epci' ? 'EPCI' : 'Circonscription', ...years];
   if (showCumul) header.push('Cumul RS26-RS30');
   const rows = [header];
   for (const code of sortedCodesBy()) {
     const row = [cache.model.NOM_BY_CODE[code] || code];
     for (const r of years) { const v = getValAt(code, r); row.push(v == null ? '' : Math.round(v*100)/100); }
-    if (showCumul) { const v = state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null); row.push(v == null ? '' : Math.round(v*100)/100); }
+    if (showCumul) { const v = type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null); row.push(v == null ? '' : Math.round(v*100)/100); }
     rows.push(row);
   }
   const totalRow = ['TOTAL'];
   for (const r of years) { const v = totalForYear(r); totalRow.push(v == null ? '' : Math.round(v*100)/100); }
   if (showCumul) { const v = totalCumul(); totalRow.push(v == null ? '' : Math.round(v*100)/100); }
   rows.push(totalRow);
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Données');
-  XLSX.writeFile(wb, exportName('xlsx'));
+  return rows;
+}
+// Colonnes années pour les écoles : mêmes rentrées que RENTREES_DISPO
+// (RS21…RS30), en excluant les deux années de base RS19/RS20 qui ne servent
+// qu'au calcul de la toute première variation.
+function schoolYearColumns(model) {
+  return RENTREES_ALL.filter(r => !RS_EXCLUDE_TIMELINE.has(r) && model.points.some(p => p.years[r] != null));
+}
+// Nom (pas code) de l'EPCI/circonscription contenant un point donné.
+function findAreaName(lng, lat, cache) {
+  if (lng == null || lat == null || !cache.geojson) return '';
+  const feature = cache.geojson.features.find(f => pointInPolygonGeom([lng, lat], f.geometry));
+  if (!feature) return '';
+  const code = String(feature.properties[cache.codeProp]);
+  return cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+}
+function buildSchoolAreaNames(model, circoCache, epciCache) {
+  const circoName = new Map(), epciName = new Map();
+  for (const s of model.points) {
+    circoName.set(s.uai, findAreaName(s.lng, s.lat, circoCache));
+    epciName.set(s.uai, findAreaName(s.lng, s.lat, epciCache));
+  }
+  return { circoName, epciName };
+}
+// Lignes d'une feuille "Par école" : mêmes principes que buildScaleSheetRows,
+// plus les colonnes Circonscription/EPCI (noms) pour permettre un TCD.
+function buildSchoolSheetRows(type, model, circoName, epciName) {
+  const years = schoolYearColumns(model);
+  const showCumul = type !== 'effectifs';
+  const header = ['UAI', 'École', 'Sigle', 'Commune', 'Type', 'Circonscription', 'EPCI', ...years];
+  if (showCumul) header.push('Cumul RS26-RS30');
+  const sorted = [...model.points].sort((a, b) => schoolDisplayName(a).localeCompare(schoolDisplayName(b), 'fr'));
+  const rows = [header];
+  for (const s of sorted) {
+    const row = [
+      s.uai, s.denomination || '', s.sigle || '', s.commune || '', s.type || '',
+      circoName.get(s.uai) || '', epciName.get(s.uai) || '',
+    ];
+    for (const r of years) {
+      const idx = RENTREES_ALL.indexOf(r);
+      const prevR = idx > 0 ? RENTREES_ALL[idx - 1] : null;
+      const cur = s.years[r], prev = prevR != null ? s.years[prevR] : null;
+      let v;
+      if (type === 'effectifs') v = cur ?? null;
+      else if (cur != null && prev != null) {
+        const diff = cur - prev;
+        v = type === 'pourcentage' ? (prev !== 0 ? diff / prev * 100 : null) : diff;
+      } else v = null;
+      row.push(v == null ? '' : Math.round(v * 100) / 100);
+    }
+    if (showCumul) {
+      const v = type === 'pourcentage' ? (s.cumulPct ?? null) : (s.cumul ?? null);
+      row.push(v == null ? '' : Math.round(v * 100) / 100);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+// Export complet : quel que soit l'endroit d'où il est déclenché, produit le
+// même classeur (9 feuilles = 3 échelles × 3 unités), indépendamment de la
+// vue/échelle/unité actuellement affichées.
+async function exportAllDataXLSX() {
+  const prevEchelle = state.echelle, prevType = state.type;
+  const prevSortKey = sortKey, prevSortDir = sortDir;
+  sortKey = 'NAME'; sortDir = 'asc';
+  try {
+    const [, , schoolModelData] = await Promise.all([ensureScaleData('circo'), ensureScaleData('epci'), ensureSchoolData()]);
+    const wb = XLSX.utils.book_new();
+    const echelles = [{ key: 'circo', label: 'Par circo' }, { key: 'epci', label: 'Par EPCI' }];
+    const types = [{ key: 'effectifs', label: 'Effectifs' }, { key: 'variation', label: 'Variation' }, { key: 'pourcentage', label: 'Pourcentage' }];
+    for (const ech of echelles) {
+      state.echelle = ech.key;
+      for (const ty of types) {
+        state.type = ty.key;
+        const rows = buildScaleSheetRows(ech.key, ty.key);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), `${ech.label} (${ty.label})`);
+      }
+    }
+    const { circoName, epciName } = buildSchoolAreaNames(schoolModelData, scaleCache.circo, scaleCache.epci);
+    for (const ty of types) {
+      const rows = buildSchoolSheetRows(ty.key, schoolModelData, circoName, epciName);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), `Par école (${ty.label})`);
+    }
+    XLSX.writeFile(wb, `carte_scolaire_1D_${new Date().toISOString().slice(0,10)}.xlsx`);
+  } finally {
+    state.echelle = prevEchelle; state.type = prevType;
+    sortKey = prevSortKey; sortDir = prevSortDir;
+  }
 }
 
 async function renderCurrentView() {
@@ -2080,13 +2169,14 @@ document.getElementById('sel-export').addEventListener('change', async e => {
   e.target.selectedIndex = 0;
   if (!format) return;
   try {
-    if (state.vue === 'carte') {
-      alert("L'export de la vue Carte n'est pas encore disponible.");
+    if (format === 'xlsx') {
+      // L'export Excel est indépendant de la vue/échelle/unité affichées :
+      // il contient toujours l'intégralité des données du document.
+      await exportAllDataXLSX();
       return;
     }
-    if (format === 'xlsx') {
-      if (state.vue === 'tableau') exportTableauXLSX();
-      else alert("L'export Excel n'est disponible que pour la vue Tableau.");
+    if (state.vue === 'carte') {
+      alert("L'export de la vue Carte n'est pas encore disponible.");
       return;
     }
     const svgString = state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
