@@ -226,6 +226,7 @@ button, select { font-family: inherit; }
   padding: 0 0.9rem; min-height: 3.4rem; flex-shrink: 0;
 }
 #tl-wrap { flex: 1; display: flex; align-items: stretch; overflow: hidden; position: relative; }
+#tl-wrap.disabled { opacity: 0.4; pointer-events: none; }
 #tl-zones { position: absolute; inset: 0; display: flex; pointer-events: none; padding: 0 0.5rem; }
 .tl-zone { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 0.3rem; }
 .tl-zone-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.45); }
@@ -950,6 +951,9 @@ function enterSchoolsMode() {
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
   closeInfoPanel();
   showSchoolsForFeature();
+  buildTimeline();
+  refreshSegButtons();
+  updateTitle();
 }
 function exitSchoolsMode() {
   schoolsModeActive = false;
@@ -957,6 +961,9 @@ function exitSchoolsMode() {
   if (geojsonLayer) { geojsonLayer.eachLayer(l => geojsonLayer.resetStyle(l)); addLabels(); }
   closeInfoPanel();
   updateLegend();
+  buildTimeline();
+  refreshSegButtons();
+  updateTitle();
 }
 function showFeatureInfo(feature) {
   const cache = scaleCache[state.echelle];
@@ -1026,6 +1033,8 @@ function showSchoolInfo(school) {
   rowsHtml += `<tr class="cumul-row"><td>Cumul<br>RS26-RS30</td><td>·</td><td>${school.cumul==null?'·':formatSchoolVal(school.cumul)}</td><td>${fmtSchoolPct(school.cumulPct)}</td></tr>`;
   document.getElementById('info-school-tbody').innerHTML = rowsHtml;
   document.getElementById('info-school-block').hidden = false;
+  document.getElementById('map-info-panel').classList.add('show');
+  updateLegendOffset();
 }
 
 /* ── Conversion de coordonnées écoles (Lambert-93 ou lat/lng inversés) ── */
@@ -1361,6 +1370,7 @@ function renderMap() {
 /* ── Frise (RS19…RS30 + Cumul) ── */
 function buildTimeline() {
   const cache = scaleCache[state.echelle];
+  document.getElementById('tl-wrap').classList.toggle('disabled', schoolsModeActive);
   const tlRail = document.getElementById('tl-rail'), tlZones = document.getElementById('tl-zones');
   tlRail.innerHTML = ''; tlZones.innerHTML = '';
   const rentrees = cache.model.RENTREES_DISPO.filter(r => state.type !== 'effectifs' || r !== 'CUMUL');
@@ -1377,6 +1387,7 @@ function buildTimeline() {
     item.className = 'tl-item' + (isCumul?' cumul':'') + (r===currentRentree()?' active':'');
     item.innerHTML = `<span class="tl-label">${isCumul?'Cumul<br>RS26–RS30':r}</span><div class="tl-dot"></div>`;
     item.addEventListener('click', () => {
+      if (schoolsModeActive) return;
       state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(r);
       buildTimeline();
       if (!schoolsModeActive && geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
@@ -1401,7 +1412,9 @@ function updateTitle() {
   const uniteCap = unite.charAt(0).toUpperCase() + unite.slice(1);
   const mainWord = titlePrefix();
   let periodPart;
-  if (state.vue === 'carte') {
+  if (schoolsModeActive) {
+    periodPart = ' — Cumul RS26-RS30';
+  } else if (state.vue === 'carte') {
     const r = currentRentree();
     periodPart = ' — ' + (r === 'CUMUL' ? 'RS26 à RS30 (cumul)' : (r || ''));
   } else {
@@ -1986,6 +1999,7 @@ function setSeg(containerId, dataAttr, value, onChange) {
 function refreshSegButtons() {
   setSeg('seg-vue', 'vue', state.vue, v => { state.vue = v; state.rentreeIdx = null; refreshSegButtons(); renderCurrentView(); });
   setSeg('seg-type', 'type', state.type, v => {
+    if (v === 'effectifs' && schoolsModeActive) return;
     if (v === 'effectifs' && currentRentree() === 'CUMUL') {
       const cache = scaleCache[state.echelle];
       const idxRS26 = cache?.model?.RENTREES_DISPO?.indexOf('RS26');
@@ -1995,6 +2009,10 @@ function refreshSegButtons() {
     refreshSegButtons();
     renderCurrentView();
   });
+  // "Effectifs" n'a pas de sens en mode "Afficher les écoles" (les points
+  // n'affichent que le cumul RS26-RS30) : bouton grisé et non cliquable.
+  const effBtn = document.querySelector('#seg-type .seg-btn[data-type="effectifs"]');
+  if (effBtn) effBtn.disabled = schoolsModeActive;
 }
 
 function updateSidebarToggleTitle() {
