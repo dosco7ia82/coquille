@@ -590,6 +590,72 @@ function buildRelatifColors(breaks) {
   return colors;
 }
 
+// Palette divergente rouge → vert (8 teintes) pour les classifications en
+// ruptures naturelles (Jenks), cohérente avec .var-neg/.var-pos.
+const DIVERGING_8 = ['#a50026','#d73027','#f46d43','#fdae61','#d9ef8b','#a6d96a','#66bd63','#1a9850'];
+
+// Algorithme de Jenks (ruptures naturelles / Fisher-Jenks) : classification
+// en k classes minimisant la variance intra-classe. Retourne k+1 bornes.
+function jenksBreaks(values, nClasses) {
+  const data = [...values].sort((a, b) => a - b);
+  const n = data.length;
+  const k = Math.max(1, Math.min(nClasses, n));
+  if (k === 1) return [data[0], data[n - 1]];
+  const mat1 = Array.from({ length: n + 1 }, () => new Array(k + 1).fill(0));
+  const mat2 = Array.from({ length: n + 1 }, () => new Array(k + 1).fill(0));
+  for (let i = 1; i <= k; i++) {
+    mat1[1][i] = 1;
+    mat2[1][i] = 0;
+    for (let j = 2; j <= n; j++) mat2[j][i] = Infinity;
+  }
+  let v = 0;
+  for (let l = 2; l <= n; l++) {
+    let s1 = 0, s2 = 0, w = 0;
+    for (let m = 1; m <= l; m++) {
+      const i3 = l - m + 1;
+      const val = data[i3 - 1];
+      s2 += val * val; s1 += val; w++;
+      v = s2 - (s1 * s1) / w;
+      const i4 = i3 - 1;
+      if (i4 !== 0) {
+        for (let j = 2; j <= k; j++) {
+          if (mat2[l][j] >= v + mat2[i4][j - 1]) {
+            mat1[l][j] = i3;
+            mat2[l][j] = v + mat2[i4][j - 1];
+          }
+        }
+      }
+    }
+    mat1[l][1] = 1;
+    mat2[l][1] = v;
+  }
+  const breaks = new Array(k + 1);
+  breaks[k] = data[n - 1];
+  breaks[0] = data[0];
+  let kk = n;
+  for (let j = k; j >= 2; j--) {
+    const id = mat1[kk][j] - 2;
+    breaks[j - 1] = data[id];
+    kk = mat1[kk][j] - 1;
+  }
+  return breaks;
+}
+// Classification en ruptures naturelles (Jenks) + palette divergente,
+// utilisée pour les légendes en unité Pourcentage (écoles, cumul circo/EPCI).
+function buildJenksColors(values, nClasses) {
+  const finite = values.filter(v => v != null && Number.isFinite(v));
+  if (finite.length === 0) return { breaks: [], colors: [] };
+  const uniq = [...new Set(finite)];
+  const k = Math.min(nClasses, uniq.length);
+  const breaks = jenksBreaks(finite, k);
+  const colors = [];
+  for (let i = 0; i < k; i++) {
+    const idx = k > 1 ? Math.round(i * (DIVERGING_8.length - 1) / (k - 1)) : Math.round((DIVERGING_8.length - 1) / 2);
+    colors.push(DIVERGING_8[idx]);
+  }
+  return { breaks, colors };
+}
+
 // Détection souple des colonnes selon l'échelle (les webhooks n8n peuvent
 // renvoyer des libellés de colonnes légèrement différents d'une table à l'autre).
 function detectColumns(sample, echelle) {
@@ -739,6 +805,15 @@ function buildModel(records, echelle) {
     model.COLORS.pourcentage = buildRelatifColors(breaks);
     model.N.pourcentage = breaks.length-1;
   }
+  // Classes "cumul pourcentage" (variation cumulée RS26-RS30, en %) : ruptures
+  // naturelles (Jenks) à 8 classes, plus adaptées que le pas fixe sur ce point.
+  {
+    const vals = Object.values(model.CUMUL_PCT);
+    const { breaks, colors } = buildJenksColors(vals, 8);
+    model.BREAKS.cumulPourcentage = breaks;
+    model.COLORS.cumulPourcentage = colors;
+    model.N.cumulPourcentage = breaks.length - 1;
+  }
 
   return model;
 }
@@ -798,6 +873,12 @@ function currentRentree() {
   return cache.model.RENTREES_DISPO[state.rentreeIdx];
 }
 function isCumulMode() { return currentRentree() === 'CUMUL' && state.type === 'variation'; }
+// Clé de classification active : le point Cumul RS26-RS30 en unité Pourcentage
+// utilise ses propres ruptures naturelles (Jenks), calculées sur les valeurs
+// cumulées et non sur celles de la variation annuelle.
+function activeBreakKey() {
+  return (currentRentree() === 'CUMUL' && state.type === 'pourcentage') ? 'cumulPourcentage' : state.type;
+}
 
 function getValAt(code, r) {
   const cache = scaleCache[state.echelle];
@@ -807,10 +888,14 @@ function getValAt(code, r) {
   return (cache.model.VARIATIONS[code]||{})[r] ?? null;
 }
 function getVal(code) { return getValAt(code, currentRentree()); }
-function getColor(val) {
+// breakKey optionnel : par défaut la classification du point actuellement
+// sélectionné (carte) ; le tableau (colonnes annuelles) impose state.type
+// explicitement pour ne jamais utiliser les ruptures du point Cumul.
+function getColor(val, breakKey) {
   if (val == null) return '#dddddd';
   const cache = scaleCache[state.echelle];
-  const breaks = cache.model.BREAKS[state.type], colors = cache.model.COLORS[state.type], n = cache.model.N[state.type];
+  const key = breakKey || activeBreakKey();
+  const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
   if (!breaks || !breaks.length) return '#dddddd';
   for (let i=0;i<n;i++) if (val < breaks[i+1]) return colors[i];
   return colors[n-1];
@@ -834,7 +919,14 @@ let schoolsModeActive = false;
 function simplifiedPolygonStyle() { return { weight: 4, color: '#111', fillOpacity: 0 }; }
 function onEachFeature(feature, layer) {
   layer.on({
-    mouseover(e){ if (!schoolsModeActive) return; e.target.setStyle({ weight:5, color:'#ff6600', fillOpacity:0 }); e.target.bringToFront(); },
+    mouseover(e){
+      if (!schoolsModeActive) return;
+      e.target.setStyle({ weight:5, color:'#ff6600', fillOpacity:0 });
+      e.target.bringToFront();
+      // Les points-écoles doivent rester cliquables : ne jamais laisser un
+      // polygone survolé passer devant la couche des écoles.
+      if (schoolLayerGroup) schoolLayerGroup.bringToFront();
+    },
     mouseout(e){ if (!schoolsModeActive) return; e.target.setStyle(simplifiedPolygonStyle()); },
     click(){ onFeatureClick(feature, layer); },
   });
@@ -1188,8 +1280,9 @@ async function showSchoolsForFeature() {
   const valueOf = p => isPct ? p.cumulPct : p.cumul;
   const withValue = model.points.filter(p => valueOf(p) != null);
   if (schoolLayerGroup) schoolLayerGroup.remove();
-  const step = isPct ? 1 : 5;
-  const { breaks, colors } = buildSchoolBreaksFixed(withValue.map(valueOf), step);
+  const { breaks, colors } = isPct
+    ? buildJenksColors(withValue.map(valueOf), 8)
+    : buildSchoolBreaksFixed(withValue.map(valueOf), 5);
   const placed = declusterSchoolPoints(withValue);
   schoolLayerGroup = L.layerGroup();
   for (const { school: p, lat, lng } of placed) {
@@ -1236,14 +1329,15 @@ function fmtLegendRange(lo, hi) {
   return fmtLo + ' à +' + fmt(hi) + unit;
 }
 function legendTitle() {
-  const cumul = isCumulMode();
+  const cumul = currentRentree() === 'CUMUL';
   if (state.type === 'effectifs') return "Nombre d'élèves";
   if (state.type === 'pourcentage') return cumul ? "Variation cumulée (%) RS26–RS30" : "Variation (%) par rapport à n−1";
   return cumul ? "Variation en nombre d'élèves cumulée RS26-RS30" : "Variation du nombre d'élèves par rapport à n−1";
 }
 function updateLegend() {
   const cache = scaleCache[state.echelle];
-  const breaks = cache.model.BREAKS[state.type], colors = cache.model.COLORS[state.type], n = cache.model.N[state.type];
+  const key = activeBreakKey();
+  const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
   const el = document.getElementById('map-legend');
   if (!breaks || breaks.length < 2 || !n) { el.innerHTML = `<h4>${legendTitle()}</h4>`; return; }
   let html = `<h4>${legendTitle()}</h4>`;
@@ -1656,7 +1750,7 @@ function renderHeatmap() {
       cell.dataset.row = code;
       if (v == null) { cell.classList.add('h-empty'); cell.textContent = '·'; }
       else {
-        const bg = getColor(v);
+        const bg = getColor(v, state.type);
         cell.style.background = bg; cell.style.color = textColor(bg);
         cell.textContent = formatVal(v);
         cell.title = `${cache.model.NOM_BY_CODE[code]||code} — ${r} : ${formatVal(v)}`;
