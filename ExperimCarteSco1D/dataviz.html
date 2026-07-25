@@ -174,6 +174,23 @@ button, select { font-family: inherit; }
 }
 .export-select:hover { border-color: #999; }
 
+/* Boutons étiquettes carte (Afficher les valeurs / Seconde unité) : visibles
+   uniquement en vue Cartes, texte seul, côte à côte. */
+.map-label-btns { display: flex; gap: 0.35rem; margin-bottom: 0.6rem; }
+.map-label-btns[hidden] { display: none; }
+.btn-label-toggle {
+  flex: 1 1 0; min-width: 0; border: 1px solid var(--border-default-grey); border-radius: 0.25rem;
+  background: #fff; color: var(--text-mention-grey); font-size: 0.68rem; font-weight: 600;
+  padding: 0.35em 0.3em; line-height: 1.2; cursor: pointer; text-align: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-label-toggle:hover { background: var(--background-alt-blue-france); border-color: var(--blue-france-main-525); }
+.btn-label-toggle.active { background: var(--blue-france-main-525); border-color: var(--blue-france-main-525); color: #fff; }
+.btn-label-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-label-toggle:disabled:hover { background: #fff; border-color: var(--border-default-grey); }
+
+.app-version { margin: 0.7rem 0 0; text-align: center; }
+
 /* Bouton "Afficher les écoles" : visible uniquement en vue Cartes */
 #section-schools { display: none; }
 #section-schools.show { display: block; }
@@ -379,6 +396,8 @@ button, select { font-family: inherit; }
 }
 .epci-variation { font-size: 0.92rem; font-weight: 800; display: block; margin-top: 2px;
   text-shadow: -1px -1px 0 rgba(255,255,255,.92), 1px -1px 0 rgba(255,255,255,.92), -1px 1px 0 rgba(255,255,255,.92), 1px 1px 0 rgba(255,255,255,.92); }
+.epci-variation2 { font-size: 0.68rem; font-weight: 700; display: block; margin-top: 1px; opacity: 0.85;
+  text-shadow: -1px -1px 0 rgba(255,255,255,.92), 1px -1px 0 rgba(255,255,255,.92), -1px 1px 0 rgba(255,255,255,.92), 1px 1px 0 rgba(255,255,255,.92); }
 .var-neg { color: #a50026; } .var-pos { color: #1a6b2a; } .var-zero { color: #555; }
 
 .legend { background: rgba(255,255,255,0.96); padding: 0.7em 0.85em; border-radius: 0.3rem; box-shadow: 0 1px 5px rgba(0,0,0,0.3); font-size: 0.78rem; line-height: 1.5; }
@@ -543,12 +562,17 @@ button, select { font-family: inherit; }
       </div>
 
       <div class="nav-section discrete">
+        <div class="map-label-btns" id="map-label-btns" hidden>
+          <button type="button" class="btn-label-toggle small" id="btn-toggle-values">Afficher les valeurs</button>
+          <button type="button" class="btn-label-toggle small" id="btn-toggle-unite2" hidden>Seconde unité</button>
+        </div>
         <select id="sel-export" class="export-select" title="PNG/SVG : vue courante · Excel : toutes les données">
           <option value="" disabled selected>Export</option>
           <option value="png">PNG</option>
           <option value="svg">SVG</option>
           <option value="xlsx">Excel</option>
         </select>
+        <p class="small text-muted app-version" id="app-version">DSDEN 82<br>v5.5</p>
       </div>
 
       </div>
@@ -670,6 +694,8 @@ function paramEnum(name, allowed, fallback) {
 }
 const urlWantsSchools = urlParams.get('ecoles') === '1';
 const urlTimeline = urlParams.get('timeline');
+const urlWantsValues = urlParams.get('valeurs') !== '0';
+const urlWantsUnite2 = urlParams.get('unite2') === '1';
 const state = {
   sessId: urlParams.get('SessID'),
   echelle: paramEnum('echelle', ['epci', 'circo'], 'epci'),       // 'epci' | 'circo'
@@ -678,6 +704,8 @@ const state = {
   rentreeIdx: null,       // index dans RENTREES (scale courante)
   sessionActive: null,   // null tant que non vérifié, puis true/false
   sessionMessage: '',
+  showValues: urlWantsValues,       // étiquettes carte : nom + valeur (sinon nom seul)
+  showSecondUnit: urlWantsUnite2,   // étiquettes carte : 3e ligne (unité complémentaire)
 };
 function syncUrlFromState() {
   const params = new URLSearchParams(window.location.search);
@@ -686,6 +714,8 @@ function syncUrlFromState() {
   params.set('vue', state.vue);
   params.set('unite', state.type);
   params.set('ecoles', schoolsModeActive ? '1' : '0');
+  params.set('valeurs', state.showValues ? '1' : '0');
+  params.set('unite2', state.showSecondUnit ? '1' : '0');
   const cache = scaleCache[state.echelle];
   const rentree = cache?.model?.RENTREES_DISPO?.[state.rentreeIdx];
   if (rentree) params.set('timeline', rentree); else params.delete('timeline');
@@ -1023,6 +1053,28 @@ function getValAt(code, r) {
   return (cache.model.VARIATIONS[code]||{})[r] ?? null;
 }
 function getVal(code) { return getValAt(code, currentRentree()); }
+// Valeur de l'unité complémentaire (Variation <-> Pourcentage), pour la même
+// échelle/rentrée que la valeur principale — utilisée par le bouton carte
+// "Seconde unité" (n'a pas de sens en unité Effectifs).
+function getSecondaryVal(code) {
+  const cache = scaleCache[state.echelle];
+  const r = currentRentree();
+  if (state.type === 'variation') {
+    if (r === 'CUMUL') return cache.model.CUMUL_PCT[code] ?? null;
+    return (cache.model.VARIATIONS_PCT[code]||{})[r] ?? null;
+  }
+  if (state.type === 'pourcentage') {
+    if (r === 'CUMUL') return cache.model.CUMUL[code] ?? null;
+    return (cache.model.VARIATIONS[code]||{})[r] ?? null;
+  }
+  return null;
+}
+function formatSecondaryVal(v) {
+  if (v == null) return '';
+  const sign = v>0 ? '+' : '';
+  if (state.type === 'variation') return sign + v.toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' %';
+  return sign + Math.round(v).toLocaleString('fr-FR') + ' él.';
+}
 // breakKey optionnel : par défaut la classification du point actuellement
 // sélectionné (carte) ; le tableau (colonnes annuelles) impose state.type
 // explicitement pour ne jamais utiliser les ruptures du point Cumul.
@@ -1958,16 +2010,27 @@ function addLabels() {
     const code = String(feature.properties[cache.codeProp]);
     const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
     const center = featureCenter(feature);
-    const delta = getVal(code);
+    // Bouton "Afficher les valeurs" : nom seul si désactivé. Bouton "Seconde
+    // unité" (Variation/Pourcentage) : 3e ligne avec l'unité complémentaire,
+    // uniquement si la valeur principale est elle-même affichée.
+    const delta = state.showValues ? getVal(code) : null;
     let varHtml = '';
     if (delta != null) {
       const cls = delta>0?'var-pos':delta<0?'var-neg':'var-zero';
       varHtml = `<span class="epci-variation ${cls}">${formatVal(delta)}</span>`;
     }
+    let unit2Html = '';
+    if (delta != null && state.showSecondUnit && state.type !== 'effectifs') {
+      const secondary = getSecondaryVal(code);
+      if (secondary != null) {
+        const cls2 = secondary>0?'var-pos':secondary<0?'var-neg':'var-zero';
+        unit2Html = `<span class="epci-variation2 ${cls2}">${formatSecondaryVal(secondary)}</span>`;
+      }
+    }
     const nameText = wrapName(nom);
     const nLines = (nameText.match(/<br>/g)||[]).length + 1;
-    const anchorY = Math.round((nLines*19 + (delta!=null?20:0)) / 2);
-    const icon = L.divIcon({ className:'epci-label', html:`<div class="epci-label-inner">${nameText}${varHtml}</div>`,
+    const anchorY = Math.round((nLines*19 + (delta!=null?20:0) + (unit2Html?16:0)) / 2);
+    const icon = L.divIcon({ className:'epci-label', html:`<div class="epci-label-inner">${nameText}${varHtml}${unit2Html}</div>`,
       iconSize:[150,null], iconAnchor:[75,anchorY] });
     labelMarkers.push(L.marker(center, {icon, interactive:false}).addTo(map));
   }
@@ -2978,6 +3041,26 @@ function refreshSegButtons() {
   // mais uniquement tant qu'on est en vue Cartes.
   const effBtn = document.querySelector('#seg-type .seg-btn[data-type="effectifs"]');
   if (effBtn) effBtn.disabled = schoolsModeBlocksControls();
+  refreshMapLabelButtons();
+}
+// Boutons étiquettes carte, visibles uniquement en vue Cartes : "Afficher les
+// valeurs" (nom seul si désactivé) toujours présent ; "Seconde unité" (3e
+// ligne avec l'unité complémentaire) en plus si Variation/Pourcentage, mais
+// non actionnable tant que "Afficher les valeurs" est désactivé.
+function refreshMapLabelButtons() {
+  const wrap = document.getElementById('map-label-btns');
+  const inCarte = state.vue === 'carte';
+  wrap.hidden = !inCarte;
+  if (!inCarte) return;
+  const btnValues = document.getElementById('btn-toggle-values');
+  const btnUnite2 = document.getElementById('btn-toggle-unite2');
+  btnValues.classList.toggle('active', state.showValues);
+  btnUnite2.hidden = state.type === 'effectifs';
+  btnUnite2.classList.toggle('active', state.showSecondUnit);
+  btnUnite2.disabled = !state.showValues;
+}
+function refreshMapLabels() {
+  if (state.vue === 'carte' && !schoolsModeActive && geojsonLayer) { clearLabels(); addLabels(); }
 }
 
 function updateSidebarToggleTitle() {
@@ -3019,6 +3102,19 @@ document.getElementById('btn-toggle-legend').addEventListener('click', () => {
 document.getElementById('btn-toggle-schools').addEventListener('click', () => {
   if (schoolsModeActive) exitSchoolsMode(); else enterSchoolsMode();
   document.getElementById('btn-toggle-schools').classList.toggle('active', schoolsModeActive);
+});
+document.getElementById('btn-toggle-values').addEventListener('click', () => {
+  state.showValues = !state.showValues;
+  refreshMapLabelButtons();
+  refreshMapLabels();
+  syncUrlFromState();
+});
+document.getElementById('btn-toggle-unite2').addEventListener('click', () => {
+  if (!state.showValues) return;
+  state.showSecondUnit = !state.showSecondUnit;
+  refreshMapLabelButtons();
+  refreshMapLabels();
+  syncUrlFromState();
 });
 document.getElementById('btn-schoolchart-expand').addEventListener('click', openSchoolChartModal);
 document.getElementById('info-school-chart').addEventListener('click', openSchoolChartModal);
