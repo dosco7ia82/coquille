@@ -2603,7 +2603,11 @@ const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif
 // Export du graphique de comparaison base 100 (volet école) : redessine le
 // chart dans un <svg> détaché (même viewBox fixe que l'affichage), puis
 // reconstitue une légende en SVG (le HTML de #info-school-chart-legend
-// n'est pas exportable tel quel).
+// n'est pas exportable tel quel). Légende en ligne(s) sous le graphique
+// (plutôt qu'une longue colonne à droite) pour équilibrer la mise en page :
+// le viewBox du chart est bas et large (420×190), une colonne verticale à
+// droite laissait donc un pavé très large et peu haut, mal centré une fois
+// mis à l'échelle dans le canvas d'export.
 function serializeSchoolCompareSVG() {
   if (!schoolCompareData || schoolCompareData.error) return null;
   const data = schoolCompareData;
@@ -2613,34 +2617,51 @@ function serializeSchoolCompareSVG() {
   const W = vb[2], H = vb[3];
   const titleTxt = escXml(schoolCompareTitle || 'Comparaison base 100');
   const TH = 30;
-  const GAP = 22; // marge entre le graphique et le panneau légende (titre d'axe droit pivoté)
-  const LW = 240, padL = 12, lineH = 20, topY = 26;
+  // Le nom d'école + de zone peut être long : la largeur totale doit couvrir
+  // le titre (même estimation de largeur qu'exportTitleSVG), sinon il déborde
+  // du canevas d'export une fois mis à l'échelle.
+  const titleBoxW = Math.ceil(String(titleTxt).length * 9) + 26;
   const baseLabel = data.years[data.baseIdx];
   const items = [
     { label: 'École', color: '#1563C2', swatch: 'line' },
     { label: data.areaLabel, color: '#E07A1F', swatch: 'line' },
-    { label: `Référence (base 100 = ${baseLabel})`, color: '#999', swatch: 'dash' },
-    { label: `Part école dans ${data.areaLabel} (%, axe droit)`, color: '#E8B93B', swatch: 'box' },
+    { label: `Base 100 = ${baseLabel}`, color: '#999', swatch: 'dash' },
+    { label: 'Part école (%)', color: '#E8B93B', swatch: 'box' },
     { label: 'Tendance EPCI', color: '#9A9A9A', swatch: 'dash' },
     { label: 'Tendance école', color: '#4DA6E8', swatch: 'dash' },
-    { label: 'Delta des projections', color: 'rgba(100,150,230,0.5)', swatch: 'box' },
+    { label: 'Delta projections', color: 'rgba(100,150,230,0.5)', swatch: 'box' },
   ];
-  let ly = topY, leg = '';
-  const LX = W + GAP;
+  const totalW = Math.max(W, 560, titleBoxW);
+  const rowGap = 20, itemGap = 22, swatchW = 20, swatchGap = 6, lineH = 20, charW = 6.6;
+  const rows = [];
+  let row = [], rowW = 0;
   for (const it of items) {
-    if (it.swatch === 'line') leg += `<rect x="${LX+padL}" y="${(ly-5).toFixed(1)}" width="20" height="3" rx="1.5" fill="${it.color}"/>`;
-    else if (it.swatch === 'dash') leg += `<line x1="${LX+padL}" y1="${(ly-3.5).toFixed(1)}" x2="${LX+padL+20}" y2="${(ly-3.5).toFixed(1)}" stroke="${it.color}" stroke-width="2" stroke-dasharray="4 3"/>`;
-    else leg += `<rect x="${LX+padL}" y="${(ly-10).toFixed(1)}" width="16" height="11" fill="${it.color}"/>`;
-    leg += `<text x="${LX+padL+28}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;fill:#333">${escXml(it.label)}</text>`;
+    const itemW = swatchW + swatchGap + it.label.length * charW;
+    const addGap = row.length ? itemGap : 0;
+    if (row.length && rowW + addGap + itemW > totalW) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
+    row.push({ ...it, w: itemW });
+    rowW += (row.length > 1 ? itemGap : 0) + itemW;
+  }
+  if (row.length) rows.push({ items: row, w: rowW });
+  let leg = '', ly = H + rowGap;
+  for (const r of rows) {
+    let lx = (totalW - r.w) / 2;
+    for (const it of r.items) {
+      if (it.swatch === 'line') leg += `<rect x="${lx.toFixed(1)}" y="${(ly-5).toFixed(1)}" width="${swatchW}" height="3" rx="1.5" fill="${it.color}"/>`;
+      else if (it.swatch === 'dash') leg += `<line x1="${lx.toFixed(1)}" y1="${(ly-3.5).toFixed(1)}" x2="${(lx+swatchW).toFixed(1)}" y2="${(ly-3.5).toFixed(1)}" stroke="${it.color}" stroke-width="2" stroke-dasharray="4 3"/>`;
+      else leg += `<rect x="${lx.toFixed(1)}" y="${(ly-10).toFixed(1)}" width="16" height="11" fill="${it.color}"/>`;
+      leg += `<text x="${(lx+swatchW+swatchGap).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;fill:#333">${escXml(it.label)}</text>`;
+      lx += it.w + itemGap;
+    }
     ly += lineH;
   }
-  const legendH = ly + 8;
-  const contentH = Math.max(H, legendH);
-  const totalW = LX + LW, totalH = TH + contentH;
-  const legPanel = `<rect x="${LX}" y="0" width="${LW}" height="${contentH}" fill="#fafafa" stroke="#e0e0e0" stroke-width="1"/>` + leg;
+  const legendH = ly - H + 6;
+  const totalH = TH + H + legendH;
+  const chartX = (totalW - W) / 2;
   const inner = `<style>${SCHOOL_CHART_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
-    + `<g transform="translate(0,${TH})">` + tmp.innerHTML + legPanel + `</g>`
+    + `<g transform="translate(${chartX.toFixed(1)},${TH})">` + tmp.innerHTML + `</g>`
+    + `<g transform="translate(0,${TH})">` + leg + `</g>`
     + exportTitleSVG(titleTxt);
   return wrapExportSVG(inner, totalW, totalH);
 }
