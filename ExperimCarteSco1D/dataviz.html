@@ -997,6 +997,20 @@ function formatVal(v) {
   if (state.type === 'pourcentage') return sign + v.toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' %';
   return sign + Math.round(v).toLocaleString('fr-FR') + ' él.';
 }
+// Vue Tableau : les cellules n'affichent plus l'unité ("él.") en Effectifs
+// (grille trop dense sinon), Variation et Pourcentage gardent la leur.
+function formatCellVal(v) {
+  if (v == null) return '';
+  if (state.type === 'effectifs') return Math.round(v).toLocaleString('fr-FR');
+  return formatVal(v);
+}
+// Vue Tableau : les totaux n'affichent jamais d'unité, sauf en Pourcentage.
+function formatTotalVal(v) {
+  if (v == null) return '';
+  if (state.type === 'pourcentage') return formatVal(v);
+  const sign = state.type === 'effectifs' ? '' : (v > 0 ? '+' : '');
+  return sign + Math.round(v).toLocaleString('fr-FR');
+}
 
 function styleFeature(feature) {
   const cache = scaleCache[state.echelle];
@@ -2342,7 +2356,7 @@ function renderHeatmap() {
       else {
         const bg = getColor(v, state.type);
         cell.style.background = bg; cell.style.color = textColor(bg);
-        cell.textContent = formatVal(v);
+        cell.textContent = formatCellVal(v);
         cell.title = `${cache.model.NOM_BY_CODE[code]||code} — ${r} : ${formatVal(v)}`;
       }
       frag.appendChild(cell);
@@ -2351,7 +2365,7 @@ function renderHeatmap() {
       const v = state.type === 'pourcentage' ? (cache.model.CUMUL_PCT[code] ?? null) : (cache.model.CUMUL[code] ?? null);
       const cell = document.createElement('div'); cell.className = 'h-cell h-cumul'; cell.dataset.row = code;
       if (v == null) { cell.classList.add('h-empty'); cell.textContent = '·'; }
-      else { cell.textContent = formatVal(v); cell.title = `${cache.model.NOM_BY_CODE[code]||code} — Cumul RS26-RS30 : ${formatVal(v)}`; }
+      else { cell.textContent = formatCellVal(v); cell.title = `${cache.model.NOM_BY_CODE[code]||code} — Cumul RS26-RS30 : ${formatVal(v)}`; }
       frag.appendChild(cell);
     }
   }
@@ -2359,14 +2373,14 @@ function renderHeatmap() {
   years.forEach(r => {
     const v = totalForYear(r);
     const cell = document.createElement('div'); cell.className = 'h-cell h-total'; cell.dataset.row = '__TOTAL__';
-    cell.textContent = v == null ? '·' : formatVal(v);
+    cell.textContent = v == null ? '·' : formatTotalVal(v);
     if (v != null) cell.title = `TOTAL — ${r} : ${formatVal(v)}`;
     frag.appendChild(cell);
   });
   if (showCumul) {
     const v = totalCumul();
     const cell = document.createElement('div'); cell.className = 'h-cell h-total h-cumul'; cell.dataset.row = '__TOTAL__';
-    cell.textContent = v == null ? '·' : formatVal(v);
+    cell.textContent = v == null ? '·' : formatTotalVal(v);
     if (v != null) cell.title = `TOTAL — Cumul RS26-RS30 : ${formatVal(v)}`;
     frag.appendChild(cell);
   }
