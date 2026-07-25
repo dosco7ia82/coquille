@@ -1061,6 +1061,10 @@ function onEachFeature(feature, layer) {
 function onFeatureClick(feature, layer) {
   if (!schoolsModeActive) return;
   map.fitBounds(layer.getBounds(), { padding: [20,20], animate: false });
+  // Le calage en grille des points-écoles est fait en pixels écran : sans
+  // recalcul après le zoom, l'espacement (fixé à l'ancien niveau de zoom)
+  // paraît trop large une fois zoomé sur le polygone.
+  showSchoolsForFeature();
   showFeatureInfo(feature);
 }
 function updateLegendOffset() {
