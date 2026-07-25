@@ -641,15 +641,37 @@ const RENTREES_ALL = ['RS19','RS20','RS21','RS22','RS23','RS24','RS25','RS26','R
 const RS_EXCLUDE_TIMELINE = new Set(['RS19','RS20']);
 
 /* ══════════════════════ ÉTAT GLOBAL ══════════════════════ */
+// Lecture des paramètres d'URL (echelle, vue, unite, ecoles, timeline) afin
+// qu'une configuration donnée soit mémorisable en marque-page ; l'URL est
+// ensuite tenue à jour (syncUrlFromState) à chaque changement d'état.
+const urlParams = new URLSearchParams(window.location.search);
+function paramEnum(name, allowed, fallback) {
+  const v = urlParams.get(name);
+  return allowed.includes(v) ? v : fallback;
+}
+const urlWantsSchools = urlParams.get('ecoles') === '1';
+const urlTimeline = urlParams.get('timeline');
 const state = {
-  sessId: new URLSearchParams(window.location.search).get('SessID'),
-  echelle: 'epci',       // 'epci' | 'circo'
-  vue: 'carte',          // 'carte' | 'courbes' | 'tableau'
-  type: 'variation',     // 'effectifs' | 'variation' | 'pourcentage'
+  sessId: urlParams.get('SessID'),
+  echelle: paramEnum('echelle', ['epci', 'circo'], 'epci'),       // 'epci' | 'circo'
+  vue: paramEnum('vue', ['carte', 'courbes', 'tableau'], 'carte'), // 'carte' | 'courbes' | 'tableau'
+  type: paramEnum('unite', ['effectifs', 'variation', 'pourcentage'], 'variation'), // 'effectifs' | 'variation' | 'pourcentage'
   rentreeIdx: null,       // index dans RENTREES (scale courante)
   sessionActive: null,   // null tant que non vérifié, puis true/false
   sessionMessage: '',
 };
+function syncUrlFromState() {
+  const params = new URLSearchParams(window.location.search);
+  if (state.sessId) params.set('SessID', state.sessId); else params.delete('SessID');
+  params.set('echelle', state.echelle);
+  params.set('vue', state.vue);
+  params.set('unite', state.type);
+  params.set('ecoles', schoolsModeActive ? '1' : '0');
+  const cache = scaleCache[state.echelle];
+  const rentree = cache?.model?.RENTREES_DISPO?.[state.rentreeIdx];
+  if (rentree) params.set('timeline', rentree); else params.delete('timeline');
+  history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+}
 
 /* Cache par échelle : { geojson, records, model } */
 const scaleCache = { epci: {}, circo: {} };
@@ -1068,6 +1090,7 @@ function enterSchoolsMode() {
   buildTimeline();
   refreshSegButtons();
   updateTitle();
+  syncUrlFromState();
 }
 function exitSchoolsMode() {
   schoolsModeActive = false;
@@ -1079,6 +1102,7 @@ function exitSchoolsMode() {
   buildTimeline();
   refreshSegButtons();
   updateTitle();
+  syncUrlFromState();
 }
 function showFeatureInfo(feature) {
   const cache = scaleCache[state.echelle];
@@ -1983,6 +2007,7 @@ function buildTimeline() {
       buildTimeline();
       if (!schoolsModeActive && geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
       updateTitle();
+      syncUrlFromState();
     });
     tlRail.appendChild(item);
   });
@@ -2650,6 +2675,9 @@ async function exportAllDataXLSX() {
   }
 }
 
+// Les paramètres d'URL "timeline"/"ecoles" dépendent des données chargées
+// (RENTREES_DISPO, carte) : appliqués une seule fois, au tout premier rendu.
+let initialUrlParamsApplied = false;
 async function renderCurrentView() {
   if (state.sessionActive !== true) {
     showSessionError(state.sessionMessage || 'Accès non autorisé.');
@@ -2657,6 +2685,10 @@ async function renderCurrentView() {
   }
   try {
     const cache = await ensureScaleData(state.echelle);
+    if (!initialUrlParamsApplied && urlTimeline) {
+      const idx = cache.model.RENTREES_DISPO.indexOf(urlTimeline);
+      if (idx >= 0) state.rentreeIdx = idx;
+    }
     if (state.rentreeIdx == null || state.rentreeIdx >= cache.model.RENTREES_DISPO.length) {
       const idxRS26 = cache.model.RENTREES_DISPO.indexOf('RS26');
       state.rentreeIdx = idxRS26 >= 0 ? idxRS26 : 0;
@@ -2666,11 +2698,17 @@ async function renderCurrentView() {
     if (state.vue === 'carte') {
       buildTimeline();
       renderMap();
+      if (!initialUrlParamsApplied && urlWantsSchools) {
+        enterSchoolsMode();
+        document.getElementById('btn-toggle-schools').classList.add('active');
+      }
     } else if (state.vue === 'courbes') {
       renderCurves();
     } else if (state.vue === 'tableau') {
       renderHeatmap();
     }
+    initialUrlParamsApplied = true;
+    syncUrlFromState();
   } catch (err) {
     showSessionError(`Erreur lors du chargement des données : ${err.message}`);
   }
