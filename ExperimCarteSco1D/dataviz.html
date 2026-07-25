@@ -304,6 +304,21 @@ button, select { font-family: inherit; }
 #info-school-table tbody tr:nth-child(even) { background: var(--background-default-grey); }
 #info-school-table tr.cumul-row { border-top: 2px solid var(--text-default-grey); font-weight: 700; }
 
+/* Liste des écoles d'un EPCI/circo (clic polygone en mode "écoles") */
+#info-schoolslist-block { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-default-grey); }
+#info-schoolslist-block .fsl-commune {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-mention-grey); margin: 0.7rem 0 0.25rem;
+}
+#info-schoolslist-block .fsl-commune:first-child { margin-top: 0; }
+#info-schoolslist-block .fsl-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem;
+  padding: 0.2rem 0; font-size: 0.78rem; color: var(--text-default-grey);
+}
+#info-schoolslist-block .fsl-name { flex: 1; min-width: 0; }
+#info-schoolslist-block .fsl-value { flex-shrink: 0; font-weight: 700; white-space: nowrap; }
+#info-schoolslist-block .fsl-empty { font-size: 0.78rem; color: var(--text-mention-grey); font-style: italic; }
+
 .epci-label, .circo-label { background: transparent; border: none; box-shadow: none; pointer-events: none; text-align: center; }
 .epci-label-inner {
   font-size: 1rem; font-weight: 700; color: #1a1a1a; line-height: 1.25; text-align: center; display: inline-block;
@@ -504,6 +519,7 @@ button, select { font-family: inherit; }
             <div id="info-panel-content">
               <h3 id="info-feature-name"></h3>
               <p id="info-feature-value"></p>
+              <div id="info-schoolslist-block" hidden></div>
               <div id="info-school-block" hidden>
                 <h4 id="info-school-title"></h4>
                 <p id="info-school-uai" class="small text-muted"></p>
@@ -959,6 +975,7 @@ function updateLegendOffset() {
 function closeInfoPanel() {
   document.getElementById('map-info-panel').classList.remove('show', 'collapsed');
   document.getElementById('info-school-block').hidden = true;
+  clearFeatureSchoolsList();
   updateLegendOffset();
 }
 function enterSchoolsMode() {
@@ -994,6 +1011,43 @@ function showFeatureInfo(feature) {
   document.getElementById('info-school-block').hidden = true;
   document.getElementById('map-info-panel').classList.add('show');
   updateLegendOffset();
+  if (schoolsModeActive) showFeatureSchoolsList(feature);
+  else clearFeatureSchoolsList();
+}
+function clearFeatureSchoolsList() {
+  const el = document.getElementById('info-schoolslist-block');
+  el.hidden = true; el.innerHTML = '';
+}
+// Liste des écoles situées dans le polygone cliqué (mode "écoles"),
+// regroupées par commune (ordre alphabétique croissant), avec la variation
+// ou le pourcentage cumulé RS26-RS30 selon l'unité actuellement affichée.
+async function showFeatureSchoolsList(feature) {
+  const el = document.getElementById('info-schoolslist-block');
+  el.hidden = false;
+  el.innerHTML = '<p class="fsl-empty">Chargement…</p>';
+  let model;
+  try { model = await ensureSchoolData(); }
+  catch (err) { console.error('[dataviz] Erreur chargement des écoles :', err); el.innerHTML = ''; el.hidden = true; return; }
+  const inside = model.points.filter(p => pointInPolygonGeom([p.lng, p.lat], feature.geometry));
+  if (!inside.length) { el.innerHTML = '<p class="fsl-empty">Aucune école dans cette zone.</p>'; return; }
+  const byCommune = {};
+  for (const s of inside) {
+    const commune = s.commune || '·';
+    (byCommune[commune] ||= []).push(s);
+  }
+  const communes = Object.keys(byCommune).sort((a, b) => a.localeCompare(b, 'fr'));
+  const isPct = state.type === 'pourcentage';
+  let html = '';
+  for (const commune of communes) {
+    const schools = byCommune[commune].slice().sort((a, b) => schoolDisplayName(a).localeCompare(schoolDisplayName(b), 'fr'));
+    html += `<div class="fsl-commune">${escXml(commune)}</div>`;
+    for (const s of schools) {
+      const val = isPct ? s.cumulPct : s.cumul;
+      const fmt = isPct ? fmtSchoolPct(val) : (val == null ? '·' : formatSchoolVal(val));
+      html += `<div class="fsl-row"><span class="fsl-name">${escXml(schoolDisplayName(s))}</span><span class="fsl-value">${fmt}</span></div>`;
+    }
+  }
+  el.innerHTML = html;
 }
 function fmtSchoolEff(v) { return v == null ? '·' : Math.round(v).toLocaleString('fr-FR') + ' él.'; }
 function fmtSchoolPct(v) {
@@ -1026,6 +1080,7 @@ function findContainingFeature(lng, lat) {
   return cache.geojson.features.find(f => pointInPolygonGeom([lng, lat], f.geometry)) || null;
 }
 function showSchoolInfo(school) {
+  clearFeatureSchoolsList();
   const feature = findContainingFeature(school.lng, school.lat);
   if (feature) {
     const cache = scaleCache[state.echelle];
@@ -1444,7 +1499,7 @@ function schoolTooltipHtml(school) {
   };
   return `<b>${escXml(schoolDisplayName(school))}</b><br>`
     + `Effectifs RS25 : ${fmtN(school.years.RS25)}<br>`
-    + `Effectifs RS26 : ${fmtN(school.years.RS26)}<br>`
+    + `Effectifs RS30 : ${fmtN(school.years.RS30)}<br>`
     + `Cumul RS26-RS30 : ${fmtSigned(school.cumul)}`;
 }
 async function showSchoolsForFeature() {
