@@ -590,10 +590,6 @@ function buildRelatifColors(breaks) {
   return colors;
 }
 
-// Palette divergente rouge → vert (8 teintes) pour les classifications en
-// ruptures naturelles (Jenks), cohérente avec .var-neg/.var-pos.
-const DIVERGING_8 = ['#a50026','#d73027','#f46d43','#fdae61','#d9ef8b','#a6d96a','#66bd63','#1a9850'];
-
 // Algorithme de Jenks (ruptures naturelles / Fisher-Jenks) : classification
 // en k classes minimisant la variance intra-classe. Retourne k+1 bornes.
 function jenksBreaks(values, nClasses) {
@@ -640,20 +636,16 @@ function jenksBreaks(values, nClasses) {
   }
   return breaks;
 }
-// Classification en ruptures naturelles (Jenks) + palette divergente,
-// utilisée pour les légendes en unité Pourcentage (écoles, cumul circo/EPCI).
+// Classification en ruptures naturelles (Jenks), coloration selon la même
+// logique divergente que l'unité Variation (buildRelatifColors : rouge pour
+// les classes négatives, vert pour les positives).
 function buildJenksColors(values, nClasses) {
   const finite = values.filter(v => v != null && Number.isFinite(v));
   if (finite.length === 0) return { breaks: [], colors: [] };
   const uniq = [...new Set(finite)];
   const k = Math.min(nClasses, uniq.length);
   const breaks = jenksBreaks(finite, k);
-  const colors = [];
-  for (let i = 0; i < k; i++) {
-    const idx = k > 1 ? Math.round(i * (DIVERGING_8.length - 1) / (k - 1)) : Math.round((DIVERGING_8.length - 1) / 2);
-    colors.push(DIVERGING_8[idx]);
-  }
-  return { breaks, colors };
+  return { breaks, colors: buildRelatifColors(breaks) };
 }
 
 // Détection souple des colonnes selon l'échelle (les webhooks n8n peuvent
@@ -924,8 +916,9 @@ function onEachFeature(feature, layer) {
       e.target.setStyle({ weight:5, color:'#ff6600', fillOpacity:0 });
       e.target.bringToFront();
       // Les points-écoles doivent rester cliquables : ne jamais laisser un
-      // polygone survolé passer devant la couche des écoles.
-      if (schoolLayerGroup) schoolLayerGroup.bringToFront();
+      // polygone survolé passer devant la couche des écoles. L.LayerGroup
+      // n'a pas de bringToFront() propre : on le fait marqueur par marqueur.
+      if (schoolLayerGroup) schoolLayerGroup.eachLayer(m => m.bringToFront());
     },
     mouseout(e){ if (!schoolsModeActive) return; e.target.setStyle(simplifiedPolygonStyle()); },
     click(){ onFeatureClick(feature, layer); },
