@@ -12,7 +12,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700;800&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx-js-style 1.2.0 (fork communautaire de SheetJS, licence Apache-2.0) :
+     seule variante gratuite supportant l'écriture de styles de cellules
+     (bordures) dans le .xlsx. Vendorisé localement (vendor/xlsx-js-style.min.js,
+     testé) plutôt que chargé depuis un CDN externe non vérifiable ici. -->
+<script src="vendor/xlsx-js-style.min.js"></script>
 <style>
 :root {
   --background-default-grey: #f6f6f6;
@@ -2000,6 +2004,26 @@ function buildSchoolSheetRows(type, model, circoName, epciName) {
   }
   return rows;
 }
+// Style minimal des feuilles exportées : contour bas sous chaque ligne,
+// aucun contour vertical/horizontal supérieur. En-tête en gras avec un
+// filet plus marqué. Nécessite xlsx-js-style (l'édition SheetJS gratuite
+// standard n'écrit pas les styles de cellules).
+const XLSX_BORDER_BOTTOM_THIN = { bottom: { style: 'thin', color: { rgb: 'B0B0B0' } } };
+const XLSX_BORDER_BOTTOM_HEADER = { bottom: { style: 'medium', color: { rgb: '333333' } } };
+function sheetFromRows(rows) {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (!cell) continue;
+      cell.s = R === 0
+        ? { font: { bold: true }, border: XLSX_BORDER_BOTTOM_HEADER }
+        : { border: XLSX_BORDER_BOTTOM_THIN };
+    }
+  }
+  return ws;
+}
 // Export complet : quel que soit l'endroit d'où il est déclenché, produit le
 // même classeur (9 feuilles = 3 échelles × 3 unités), indépendamment de la
 // vue/échelle/unité actuellement affichées.
@@ -2017,13 +2041,13 @@ async function exportAllDataXLSX() {
       for (const ty of types) {
         state.type = ty.key;
         const rows = buildScaleSheetRows(ech.key, ty.key);
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), `${ech.label} (${ty.label})`);
+        XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), `${ech.label} (${ty.label})`);
       }
     }
     const { circoName, epciName } = buildSchoolAreaNames(schoolModelData, scaleCache.circo, scaleCache.epci);
     for (const ty of types) {
       const rows = buildSchoolSheetRows(ty.key, schoolModelData, circoName, epciName);
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), `Par école (${ty.label})`);
+      XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), `Par école (${ty.label})`);
     }
     XLSX.writeFile(wb, `carte_scolaire_1D_${new Date().toISOString().slice(0,10)}.xlsx`);
   } finally {
