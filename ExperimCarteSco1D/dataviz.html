@@ -976,7 +976,7 @@ function showFeatureInfo(feature) {
   document.getElementById('map-info-panel').classList.add('show');
   updateLegendOffset();
 }
-function fmtSchoolEff(v) { return v == null ? '·' : Math.round(v).toLocaleString('fr-FR'); }
+function fmtSchoolEff(v) { return v == null ? '·' : Math.round(v).toLocaleString('fr-FR') + ' él.'; }
 function fmtSchoolPct(v) {
   if (v == null) return '·';
   const sign = v > 0 ? '+' : '';
@@ -1370,7 +1370,7 @@ function renderMap() {
 /* ── Frise (RS19…RS30 + Cumul) ── */
 function buildTimeline() {
   const cache = scaleCache[state.echelle];
-  document.getElementById('tl-wrap').classList.toggle('disabled', schoolsModeActive);
+  document.getElementById('tl-wrap').classList.toggle('disabled', schoolsModeBlocksControls());
   const tlRail = document.getElementById('tl-rail'), tlZones = document.getElementById('tl-zones');
   tlRail.innerHTML = ''; tlZones.innerHTML = '';
   const rentrees = cache.model.RENTREES_DISPO.filter(r => state.type !== 'effectifs' || r !== 'CUMUL');
@@ -1387,7 +1387,7 @@ function buildTimeline() {
     item.className = 'tl-item' + (isCumul?' cumul':'') + (r===currentRentree()?' active':'');
     item.innerHTML = `<span class="tl-label">${isCumul?'Cumul<br>RS26–RS30':r}</span><div class="tl-dot"></div>`;
     item.addEventListener('click', () => {
-      if (schoolsModeActive) return;
+      if (schoolsModeBlocksControls()) return;
       state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(r);
       buildTimeline();
       if (!schoolsModeActive && geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
@@ -1996,10 +1996,13 @@ function setSeg(containerId, dataAttr, value, onChange) {
     };
   });
 }
+// La neutralisation de la timeline / du bouton "Effectifs" ne vaut que tant
+// que la carte (avec ses écoles) est effectivement affichée à l'écran.
+function schoolsModeBlocksControls() { return schoolsModeActive && state.vue === 'carte'; }
 function refreshSegButtons() {
   setSeg('seg-vue', 'vue', state.vue, v => { state.vue = v; state.rentreeIdx = null; refreshSegButtons(); renderCurrentView(); });
   setSeg('seg-type', 'type', state.type, v => {
-    if (v === 'effectifs' && schoolsModeActive) return;
+    if (v === 'effectifs' && schoolsModeBlocksControls()) return;
     if (v === 'effectifs' && currentRentree() === 'CUMUL') {
       const cache = scaleCache[state.echelle];
       const idxRS26 = cache?.model?.RENTREES_DISPO?.indexOf('RS26');
@@ -2010,9 +2013,10 @@ function refreshSegButtons() {
     renderCurrentView();
   });
   // "Effectifs" n'a pas de sens en mode "Afficher les écoles" (les points
-  // n'affichent que le cumul RS26-RS30) : bouton grisé et non cliquable.
+  // n'affichent que le cumul RS26-RS30) : bouton grisé et non cliquable,
+  // mais uniquement tant qu'on est en vue Cartes.
   const effBtn = document.querySelector('#seg-type .seg-btn[data-type="effectifs"]');
-  if (effBtn) effBtn.disabled = schoolsModeActive;
+  if (effBtn) effBtn.disabled = schoolsModeBlocksControls();
 }
 
 function updateSidebarToggleTitle() {
