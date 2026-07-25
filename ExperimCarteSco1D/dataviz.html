@@ -308,6 +308,7 @@ button, select { font-family: inherit; }
 .sc-grid    { stroke: #e6e6e6; stroke-width: 1; }
 .sc-ref     { stroke: #aaa; stroke-width: 1; stroke-dasharray: 3 3; }
 .sc-line    { fill: none; stroke-width: 2; }
+.sc-trend   { fill: none; stroke-width: 1.3; stroke-dasharray: 3 2; }
 .sc-dot     { pointer-events: none; }
 .sc-bar     { fill: #E8B93B; fill-opacity: 0.28; }
 .sc-crosshair { stroke: #999; stroke-width: 1; stroke-dasharray: 2 2; pointer-events: none; }
@@ -435,7 +436,7 @@ button, select { font-family: inherit; }
 #curves-legend .lg-name { white-space: normal; overflow-wrap: break-word; color: var(--text-default-grey); font-size: 0.92rem; line-height: 1.25; }
 
 #tooltip {
-  position: fixed; pointer-events: none; z-index: 2000; display: none;
+  position: fixed; pointer-events: none; z-index: 3100; display: none;
   background: #2d2d2d; color: #fff; font-size: 0.72rem; line-height: 1.4;
   padding: 0.35rem 0.55rem; border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
   white-space: nowrap;
@@ -1210,12 +1211,24 @@ function computeSchoolCompareData(school, code) {
   const area100 = areaVals.map(v => (v == null || !areaBase) ? null : Math.round(v / areaBase * 1000) / 10);
   const pct = years.map((r, i) => (schoolVals[i] == null || !areaVals[i]) ? null : Math.round(schoolVals[i] / areaVals[i] * 1000) / 10);
   const fp = firstPrevIdx(years);
-  return { years, schoolVals, areaVals, school100, area100, pct, baseIdx, areaName, areaLabel, fp };
+  const pivotIdx = fp >= 1 ? fp - 1 : (fp === 0 ? 0 : years.length - 1);
+
+  // Deux scénarios de projection pour l'école elle-même (webhook
+  // Projections_Scenarios), raccordés au dernier constat puis indexés sur la
+  // même base que la courbe "École" : leur écart forme le "Delta des
+  // projections". Vides sur les anciens formats de données (dégradation
+  // silencieuse : pas de lignes tracées).
+  const cibleEpciArr = years.map((r, i) => i === pivotIdx ? schoolVals[pivotIdx] : (i > pivotIdx ? (school.cibleEpci?.[r] ?? null) : null));
+  const tendanceEcoleArr = years.map((r, i) => i === pivotIdx ? schoolVals[pivotIdx] : (i > pivotIdx ? (school.tendanceEcole?.[r] ?? null) : null));
+  const cibleEpci100 = cibleEpciArr.map(v => (v == null || !schoolBase) ? null : Math.round(v / schoolBase * 1000) / 10);
+  const tendanceEcole100 = tendanceEcoleArr.map(v => (v == null || !schoolBase) ? null : Math.round(v / schoolBase * 1000) / 10);
+
+  return { years, schoolVals, areaVals, school100, area100, pct, baseIdx, areaName, areaLabel, fp, pivotIdx, cibleEpciArr, tendanceEcoleArr, cibleEpci100, tendanceEcole100 };
 }
 function drawSchoolCompareChart(svgEl, data) {
   svgEl.innerHTML = '';
   if (!data || data.error) return;
-  const { years, school100, area100, pct, fp, schoolVals, areaVals } = data;
+  const { years, school100, area100, pct, fp, schoolVals, areaVals, cibleEpci100, tendanceEcole100 } = data;
   const W = 420, H = 190;
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const mL = 34, mR = 34, mT = 20, mB = 16;
@@ -1224,7 +1237,7 @@ function drawSchoolCompareChart(svgEl, data) {
   const x = i => mL + (n === 1 ? plotW / 2 : i * plotW / (n - 1));
 
   let lo = 100, hi = 100;
-  for (const arr of [school100, area100]) for (const v of arr) if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  for (const arr of [school100, area100, cibleEpci100, tendanceEcole100]) for (const v of arr) if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; }
   const pad = Math.max(2, (hi - lo) * 0.12);
   lo = Math.floor(lo - pad); hi = Math.ceil(hi + pad);
   if (lo === hi) { lo -= 5; hi += 5; }
@@ -1251,14 +1264,15 @@ function drawSchoolCompareChart(svgEl, data) {
     svgEl.appendChild(el('rect', { x: labelBoundaryX, y: mT, width: (mL + plotW) - labelBoundaryX, height: plotH, fill: 'rgba(255,170,30,0.08)' }));
   }
 
-  // Delta des projections : zone ombrée entre École et EPCI/circo, sur la
-  // période de prévision uniquement (adapté du widget de référence).
-  if (dashFromIdx != null) {
+  // Delta des projections : zone ombrée entre les deux scénarios de
+  // prévision de l'école (Tendance EPCI / Tendance école, webhook
+  // Projections_Scenarios), sur la période de prévision (widget de référence).
+  {
     const segIdx = [];
-    for (let i = dashFromIdx; i < n; i++) if (school100[i] != null && area100[i] != null) segIdx.push(i);
+    for (let i = 0; i < n; i++) if (cibleEpci100[i] != null && tendanceEcole100[i] != null) segIdx.push(i);
     if (segIdx.length >= 2) {
-      const forward = segIdx.map(i => [x(i), y(area100[i])]);
-      const backward = segIdx.slice().reverse().map(i => [x(i), y(school100[i])]);
+      const forward = segIdx.map(i => [x(i), y(cibleEpci100[i])]);
+      const backward = segIdx.slice().reverse().map(i => [x(i), y(tendanceEcole100[i])]);
       const poly = [...forward, ...backward];
       const d = poly.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') + ' Z';
       svgEl.appendChild(el('path', { d, fill: 'rgba(100,150,230,0.16)', stroke: 'none' }));
@@ -1316,6 +1330,18 @@ function drawSchoolCompareChart(svgEl, data) {
   drawSeries(area100, '#E07A1F');
   drawSeries(school100, '#1563C2');
 
+  // Tendance EPCI / Tendance école : les deux scénarios de prévision pour
+  // l'école (webhook Projections_Scenarios), toujours en pointillé fin,
+  // uniquement présentes sur la zone de prévision.
+  const drawTrend = (arr, color) => {
+    const pts = []; arr.forEach((v, i) => { if (v != null) pts.push([x(i), y(v)]); });
+    if (pts.length < 2) return;
+    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    svgEl.appendChild(el('path', { class: 'sc-trend', d, stroke: color }));
+  };
+  drawTrend(cibleEpci100, '#9A9A9A');
+  drawTrend(tendanceEcole100, '#4DA6E8');
+
   // Infobulle "colonne" : au survol, résume à la verticale du curseur toutes
   // les séries (École, EPCI/circo, part en %) pour l'année la plus proche,
   // plutôt qu'un seul point à la fois.
@@ -1345,7 +1371,7 @@ function drawSchoolCompareChart(svgEl, data) {
 // format corrigé — l'indice est bien un pourcentage ("101,8 %") et la
 // variation par rapport à n-1 est exprimée en points de pourcentage signés.
 function schoolCompareTipHtml(data, i) {
-  const { years, school100, area100, pct, schoolVals, areaVals, areaLabel } = data;
+  const { years, school100, area100, pct, schoolVals, areaVals, areaLabel, pivotIdx, cibleEpci100, tendanceEcole100, cibleEpciArr, tendanceEcoleArr } = data;
   const fmtIdx = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const fmtVar = (arr) => {
     if (i === 0 || arr[i] == null || arr[i - 1] == null) return '';
@@ -1359,6 +1385,12 @@ function schoolCompareTipHtml(data, i) {
     { label: 'École', idx: school100[i], raw: schoolVals[i], arr: school100, color: '#1563C2' },
     { label: areaLabel, idx: area100[i], raw: areaVals[i], arr: area100, color: '#E07A1F' },
   ];
+  // Les deux scénarios de prévision n'ont de sens que sur la période de
+  // prévision, et sont redondants avec "École" au point de raccord (pivot).
+  if (i > pivotIdx) {
+    rows.push({ label: 'Tendance EPCI', idx: cibleEpci100[i], raw: cibleEpciArr[i], arr: cibleEpci100, color: '#9A9A9A' });
+    rows.push({ label: 'Tendance école', idx: tendanceEcole100[i], raw: tendanceEcoleArr[i], arr: tendanceEcole100, color: '#4DA6E8' });
+  }
   for (const r of rows) {
     if (r.idx == null) continue;
     const rawTxt = r.raw != null ? ` (${Math.round(r.raw).toLocaleString('fr-FR')} élèves)` : '';
@@ -1377,6 +1409,8 @@ function buildSchoolCompareLegend(legendEl, data) {
     + `<span class="scl-item"><span class="scl-swatch" style="background:#E07A1F"></span>${escXml(data.areaLabel)}</span>`
     + `<span class="scl-item"><span class="scl-line dashed"></span>Référence (base 100 = ${baseLabel})</span>`
     + `<span class="scl-item"><span class="scl-swatch" style="background:#E8B93B;opacity:0.6"></span>Part école dans ${escXml(data.areaLabel)} (%, axe droit)</span>`
+    + `<span class="scl-item"><span class="scl-line dashed" style="border-top-color:#9A9A9A"></span>Tendance EPCI</span>`
+    + `<span class="scl-item"><span class="scl-line dashed" style="border-top-color:#4DA6E8"></span>Tendance école</span>`
     + `<span class="scl-item"><span class="scl-swatch" style="background:rgba(100,150,230,0.4)"></span>Delta des projections</span>`;
 }
 function renderSchoolCompareChart(school, code) {
@@ -1451,27 +1485,34 @@ function buildSchoolModel(records) {
   console.debug('[dataviz] premier enregistrement école brut :', records[0]);
   const keys = Object.keys(records[0]);
   const find = re => keys.find(k => re.test(k));
-  const colUai = find(/uai.*texte/i) || find(/^uai$/i) || find(/uai/i);
+  const colUai = find(/uai.*texte/i) || find(/^uai$/i) || find(/gristHelper_Display/i) || find(/uai/i);
   const colUaiRpi = find(/uai.*rpi/i) || find(/rpi/i);
   const colX = find(/coordx/i) || find(/longitude|lng|lon/i) || find(/^x$/i);
   const colY = find(/coordy/i) || find(/latitude|lat/i) || find(/^y$/i);
   const colSigle = find(/sigle/i);
   const colCommune = find(/commune/i);
-  const colDenomination = find(/denomination/i) || keys.find(k => k !== colUai && k !== colSigle && k !== colCommune && /nom|libell|ecole/i.test(k));
+  const colDenomination = find(/denomination/i) || find(/ecole.*nom/i) || keys.find(k => k !== colUai && k !== colSigle && k !== colCommune && /nom|libell|ecole/i.test(k));
   const colType = find(/^nature$/i) || find(/type.*etab|nature.*etab|type.*ecole/i)
     || keys.find(k => /^E\.[A-Z]\.[A-Z]{2}$/.test(String(records[0][k])));
+  const colScenario = find(/scenario/i);
+  const colRentree = find(/rent/i);
+  const colEffectif = find(/effectif|eleve|total/i);
 
-  // La table peut être "dépivotée" (une ligne par école×rentrée, avec une
-  // colonne rentrée + une colonne effectif) ou "large" (une ligne par école,
-  // une colonne par rentrée RS19..RS30). On détecte automatiquement laquelle.
+  // Trois formats possibles, détectés dans cet ordre : "large" (une colonne
+  // par rentrée RS19..RS30), "dépivoté à scénarios" (Projections_Scenarios :
+  // une ligne par école × rentrée × scénario — constat/moy/cible_EPCI/
+  // tendance_ecole), ou dépivoté simple (une ligne par école × rentrée,
+  // sans notion de scénario).
   const rsKeyMap = {};
   for (const rs of RENTREES_ALL) {
     const k = keys.find(kk => kk.toLowerCase() === rs.toLowerCase());
     if (k) rsKeyMap[rs] = k;
   }
   const isWide = Object.keys(rsKeyMap).length >= 2;
-  console.debug('[dataviz] format écoles détecté :', isWide ? 'large (1 colonne par rentrée)' : 'dépivoté (1 ligne par rentrée)',
-    { colUai, colUaiRpi, colX, colY, colSigle, colDenomination, colCommune, colType, rsKeyMap });
+  const isScenarioFormat = !isWide && !!colScenario && !!colRentree && !!colEffectif;
+  const format = isWide ? 'large (1 colonne par rentrée)' : isScenarioFormat ? 'dépivoté à scénarios (Projections_Scenarios)' : 'dépivoté simple (1 ligne par rentrée)';
+  console.debug('[dataviz] format écoles détecté :', format,
+    { colUai, colUaiRpi, colX, colY, colSigle, colDenomination, colCommune, colType, colScenario, colRentree, colEffectif, rsKeyMap });
 
   const makeSchool = (uai, lng, lat, row) => ({
     uai, lng, lat,
@@ -1480,7 +1521,7 @@ function buildSchoolModel(records) {
     commune: colCommune ? row[colCommune] : '',
     type: colType ? row[colType] : null,
     uaiRpi: colUaiRpi ? String(row[colUaiRpi] ?? '').trim() : '',
-    years: {},
+    years: {}, cibleEpci: {}, tendanceEcole: {},
   });
   const byUai = {};
   if (isWide) {
@@ -1494,11 +1535,29 @@ function buildSchoolModel(records) {
       }
       byUai[uai] = s;
     }
+  } else if (isScenarioFormat) {
+    // "moy" alimente les vues normales de l'app (constat sur RS19-RS25,
+    // moyenne projetée sur RS26-RS30) ; cible_EPCI et tendance_ecole ne
+    // servent qu'au Delta des projections du graphique de comparaison.
+    for (const row of records) {
+      const uai = String(row[colUai]);
+      const scenario = String(row[colScenario] ?? '').trim();
+      const rs = row[colRentree];
+      const eff = Number(row[colEffectif]);
+      if (!Number.isFinite(eff)) continue;
+      if (!byUai[uai]) {
+        const [lng, lat] = resolveSchoolCoords(Number(row[colX]), Number(row[colY]));
+        byUai[uai] = makeSchool(uai, lng, lat, row);
+      }
+      const s = byUai[uai];
+      if (scenario === 'constat' || scenario === 'moy') s.years[rs] = eff;
+      else if (scenario === 'cible_EPCI') s.cibleEpci[rs] = eff;
+      else if (scenario === 'tendance_ecole') s.tendanceEcole[rs] = eff;
+    }
   } else {
-    const colRentree = find(/rent/i);
-    const colEtat = find(/etat|tat/i);
-    let colEleves = find(/eleve|effectif|total/i);
+    let colEleves = colEffectif;
     if (!colEleves) {
+      const colEtat = find(/etat|tat/i);
       const excluded = new Set([colUai, colX, colY, colRentree, colEtat]);
       colEleves = keys.find(k => !excluded.has(k) && typeof records[0][k] === 'number');
     }
