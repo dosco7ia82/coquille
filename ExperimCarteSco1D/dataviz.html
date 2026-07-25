@@ -299,6 +299,7 @@ button, select { font-family: inherit; }
 .small.text-muted { font-size: 0.72rem; color: var(--text-mention-grey); margin: 0 0 0.7rem; }
 /* Comparaison en base 100 (école vs EPCI/circo), volet école */
 .school-chart-svg { width: 100%; height: 11rem; display: block; }
+#info-school-chart { cursor: pointer; }
 .sc-tick    { font-size: 8.5px; fill: #777; }
 .sc-tick2   { font-size: 8px; fill: #b8860b; }
 .sc-xtick   { font-size: 8.5px; fill: #555; }
@@ -307,8 +308,8 @@ button, select { font-family: inherit; }
 .sc-axis    { stroke: #999; stroke-width: 1; }
 .sc-grid    { stroke: #e6e6e6; stroke-width: 1; }
 .sc-ref     { stroke: #aaa; stroke-width: 1; stroke-dasharray: 3 3; }
-.sc-line    { fill: none; stroke-width: 2; }
-.sc-trend   { fill: none; stroke-width: 1.3; stroke-dasharray: 3 2; }
+.sc-line    { fill: none; stroke-width: 1.5; }
+.sc-trend   { fill: none; stroke-width: 1.1; stroke-dasharray: 3 2; }
 .sc-dot     { pointer-events: none; }
 .sc-bar     { fill: #E8B93B; fill-opacity: 0.28; }
 .sc-crosshair { stroke: #999; stroke-width: 1; stroke-dasharray: 2 2; pointer-events: none; }
@@ -325,13 +326,14 @@ button, select { font-family: inherit; }
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--text-mention-grey); margin-bottom: 0.2rem;
 }
-#btn-schoolchart-expand {
+.sc-icon-btn {
   border: 1px solid var(--border-default-grey); border-radius: 0.25rem; background: #fff;
   color: var(--text-mention-grey); width: 1.6rem; height: 1.6rem; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.75rem;
   transition: background .15s, color .15s, border-color .15s;
 }
-#btn-schoolchart-expand:hover { background: var(--background-alt-blue-france); color: var(--blue-france-main-525); border-color: var(--blue-france-main-525); }
+.sc-icon-btn:hover { background: var(--background-alt-blue-france); color: var(--blue-france-main-525); border-color: var(--blue-france-main-525); }
+.sc-icon-btns { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
 
 /* Popup plein écran pour la comparaison en base 100 */
 #chart-modal { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; }
@@ -347,7 +349,8 @@ button, select { font-family: inherit; }
   border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s;
 }
 #chart-modal-close:hover { background: var(--background-alt-blue-france); color: var(--blue-france-main-525); }
-#chart-modal-title { margin: 0 2.2rem 0.8rem 0; font-size: 1.1rem; color: var(--text-default-grey); font-weight: 700; }
+#chart-modal-export-btns { position: absolute; top: 0.9rem; right: 3.3rem; }
+#chart-modal-title { margin: 0 5.5rem 0.8rem 0; font-size: 1.1rem; color: var(--text-default-grey); font-weight: 700; }
 .school-chart-svg-large { height: 60vh; }
 
 /* Liste des écoles d'un EPCI/circo (clic polygone en mode "écoles") */
@@ -440,6 +443,10 @@ button, select { font-family: inherit; }
   background: #2d2d2d; color: #fff; font-size: 0.72rem; line-height: 1.4;
   padding: 0.35rem 0.55rem; border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
   white-space: nowrap;
+}
+#tooltip.tooltip-light {
+  background: #fff; color: #222; border: 1px solid #ddd;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
 
 /* ── Vue Tableau (heatmap) ────────────────────────────────────── */
@@ -577,9 +584,13 @@ button, select { font-family: inherit; }
                 <p id="info-school-chart-status" class="small text-muted" hidden></p>
                 <div id="info-school-chart-header">
                   <span>Comparaison base 100</span>
-                  <button type="button" id="btn-schoolchart-expand" title="Afficher en grand">
-                    <i class="fa-solid fa-expand"></i>
-                  </button>
+                  <div class="sc-icon-btns">
+                    <button type="button" class="sc-icon-btn sc-export-png" title="Exporter en PNG"><i class="fa-solid fa-image"></i></button>
+                    <button type="button" class="sc-icon-btn sc-export-svg" title="Exporter en SVG"><i class="fa-solid fa-file-code"></i></button>
+                    <button type="button" class="sc-icon-btn" id="btn-schoolchart-expand" title="Afficher en grand">
+                      <i class="fa-solid fa-expand"></i>
+                    </button>
+                  </div>
                 </div>
                 <svg id="info-school-chart" class="school-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
                 <div id="info-school-chart-legend" class="school-chart-legend"></div>
@@ -609,6 +620,10 @@ button, select { font-family: inherit; }
   <div id="chart-modal-backdrop"></div>
   <div id="chart-modal-card">
     <button type="button" id="chart-modal-close" title="Fermer"><i class="fa-solid fa-xmark"></i></button>
+    <div id="chart-modal-export-btns" class="sc-icon-btns">
+      <button type="button" class="sc-icon-btn sc-export-png" title="Exporter en PNG"><i class="fa-solid fa-image"></i></button>
+      <button type="button" class="sc-icon-btn sc-export-svg" title="Exporter en SVG"><i class="fa-solid fa-file-code"></i></button>
+    </div>
     <h3 id="chart-modal-title"></h3>
     <svg id="chart-modal-svg" class="school-chart-svg school-chart-svg-large" xmlns="http://www.w3.org/2000/svg"></svg>
     <div id="chart-modal-legend" class="school-chart-legend"></div>
@@ -954,6 +969,10 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
 }).addTo(map);
 let geojsonLayer = null, labelMarkers = [];
 let lastFitBounds = null;
+// Le calage en grille des écoles superposées est calculé en pixels écran :
+// il doit être recalculé à chaque changement de niveau de zoom (molette,
+// boutons +/-, double-clic…), pas seulement lors d'un zoom sur polygone.
+map.on('zoomend', () => { if (schoolsModeActive) showSchoolsForFeature(); });
 
 function ringCentroid(ring) {
   let lat=0,lng=0,area=0,n=ring.length;
@@ -1271,10 +1290,10 @@ function computeSchoolCompareData(school, code) {
 function drawSchoolCompareChart(svgEl, data) {
   svgEl.innerHTML = '';
   if (!data || data.error) return;
-  const { years, school100, area100, pct, fp, schoolVals, areaVals, cibleEpci100, tendanceEcole100 } = data;
+  const { years, school100, area100, pct, fp, schoolVals, areaVals, cibleEpci100, tendanceEcole100, areaLabel } = data;
   const W = 420, H = 190;
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const mL = 34, mR = 34, mT = 20, mB = 16;
+  const mL = 34, mR = 44, mT = 20, mB = 16;
   const plotW = W - mL - mR, plotH = H - mT - mB;
   const n = years.length;
   const x = i => mL + (n === 1 ? plotW / 2 : i * plotW / (n - 1));
@@ -1352,6 +1371,15 @@ function drawSchoolCompareChart(svgEl, data) {
   yTitle.textContent = 'Base 100';
   svgEl.appendChild(yTitle);
 
+  // Titre de l'axe secondaire (droite) : échelle des barres "part école"
+  const rTitleX = W - 8;
+  const rTitle = el('text', {
+    class: 'sc-ytitle', x: rTitleX, y: mT + plotH / 2,
+    'text-anchor': 'middle', transform: `rotate(90, ${rTitleX}, ${mT + plotH / 2})`,
+  });
+  rTitle.textContent = areaLabel === 'EPCI' ? "Part école dans l'EPCI (%)" : 'Part école dans la circonscription (%)';
+  svgEl.appendChild(rTitle);
+
   if (labelBoundaryX != null) {
     const lblC = el('text', { class: 'sc-zone-lbl', x: (mL + labelBoundaryX) / 2, y: mT - 6, 'text-anchor': 'middle', fill: '#777' }); lblC.textContent = 'Constats'; svgEl.appendChild(lblC);
     const lblP = el('text', { class: 'sc-zone-lbl', x: (labelBoundaryX + mL + plotW) / 2, y: mT - 6, 'text-anchor': 'middle', fill: '#c08400' }); lblP.textContent = 'Prévisions'; svgEl.appendChild(lblP);
@@ -1368,7 +1396,7 @@ function drawSchoolCompareChart(svgEl, data) {
     };
     if (dashFromIdx == null) addPath(pts, false);
     else { addPath(pts.filter(p => p[2] <= dashFromIdx), false); addPath(pts.filter(p => p[2] >= dashFromIdx), true); }
-    for (const p of pts) svgEl.appendChild(el('circle', { class: 'sc-dot', cx: p[0], cy: p[1], r: 2.6, fill: color }));
+    for (const p of pts) svgEl.appendChild(el('circle', { class: 'sc-dot', cx: p[0], cy: p[1], r: 2, fill: color }));
   };
   drawSeries(area100, '#E07A1F');
   drawSeries(school100, '#1563C2');
@@ -1401,7 +1429,7 @@ function drawSchoolCompareChart(svgEl, data) {
     if (crosshair) crosshair.remove();
     crosshair = el('line', { class: 'sc-crosshair', x1: x(i), y1: mT, x2: x(i), y2: mT + plotH });
     svgEl.appendChild(crosshair);
-    showTip(schoolCompareTipHtml(data, i), ev.clientX, ev.clientY);
+    showTip(schoolCompareTipHtml(data, i), ev.clientX, ev.clientY, true);
   });
   overlay.addEventListener('mouseleave', () => {
     if (crosshair) { crosshair.remove(); crosshair = null; }
@@ -1459,7 +1487,7 @@ function buildSchoolCompareLegend(legendEl, data) {
 function renderSchoolCompareChart(school, code) {
   schoolCompareData = computeSchoolCompareData(school, code);
   const areaBit = schoolCompareData && !schoolCompareData.error
-    ? ` — comparaison base 100 (${schoolCompareData.areaLabel} ${schoolCompareData.areaName})` : '';
+    ? ` — Comparaison base 100 (${schoolCompareData.areaLabel} ${schoolCompareData.areaName})` : '';
   schoolCompareTitle = schoolDisplayName(school) + areaBit;
   const statusEl = document.getElementById('info-school-chart-status');
   const svg = document.getElementById('info-school-chart');
@@ -2068,9 +2096,17 @@ function el(tag, attrs) {
   return e;
 }
 const tooltipEl = document.getElementById('tooltip');
-function showTip(html, x, y) {
+function showTip(html, x, y, light) {
   tooltipEl.innerHTML = html; tooltipEl.style.display = 'block';
-  tooltipEl.style.left = (x + 12) + 'px'; tooltipEl.style.top = (y + 12) + 'px';
+  tooltipEl.classList.toggle('tooltip-light', !!light);
+  const margin = 8;
+  const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
+  let left = x + 12, top = y + 12;
+  if (left + tw > window.innerWidth - margin) left = x - 12 - tw;
+  if (top + th > window.innerHeight - margin) top = y - 12 - th;
+  left = Math.max(margin, Math.min(left, window.innerWidth - tw - margin));
+  top = Math.max(margin, Math.min(top, window.innerHeight - th - margin));
+  tooltipEl.style.left = left + 'px'; tooltipEl.style.top = top + 'px';
 }
 function hideTip() { tooltipEl.style.display = 'none'; }
 
@@ -2490,6 +2526,75 @@ function serializeCurvesSVG() {
     + exportTitleSVG(titleTxt);
   return wrapExportSVG(inner, totalW, totalH);
 }
+const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
+.sc-grid{stroke:#e6e6e6;stroke-width:1}.sc-axis{stroke:#999;stroke-width:1}
+.sc-ref{stroke:#aaa;stroke-width:1;stroke-dasharray:3 3}
+.sc-tick{font-size:15px;fill:#777}.sc-tick2{font-size:14px;fill:#b8860b}
+.sc-xtick{font-size:15px;fill:#555}
+.sc-ytitle{font-size:14px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;fill:#777}
+.sc-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}
+.sc-line{fill:none;stroke-width:2.6}.sc-trend{fill:none;stroke-width:2;stroke-dasharray:5 3}
+.sc-bar{fill:#E8B93B;fill-opacity:0.28}.sc-dot{r:3.4}`;
+// Export du graphique de comparaison base 100 (volet école) : redessine le
+// chart dans un <svg> détaché (même viewBox fixe que l'affichage), puis
+// reconstitue une légende en SVG (le HTML de #info-school-chart-legend
+// n'est pas exportable tel quel).
+function serializeSchoolCompareSVG() {
+  if (!schoolCompareData || schoolCompareData.error) return null;
+  const data = schoolCompareData;
+  const tmp = document.createElementNS(SVG_NS, 'svg');
+  drawSchoolCompareChart(tmp, data);
+  const vb = (tmp.getAttribute('viewBox') || '0 0 420 190').split(/\s+/).map(Number);
+  const W = vb[2], H = vb[3];
+  const titleTxt = escXml(schoolCompareTitle || 'Comparaison base 100');
+  const TH = 30;
+  const GAP = 22; // marge entre le graphique et le panneau légende (titre d'axe droit pivoté)
+  const LW = 240, padL = 12, lineH = 20, topY = 26;
+  const baseLabel = data.years[data.baseIdx];
+  const items = [
+    { label: 'École', color: '#1563C2', swatch: 'line' },
+    { label: data.areaLabel, color: '#E07A1F', swatch: 'line' },
+    { label: `Référence (base 100 = ${baseLabel})`, color: '#999', swatch: 'dash' },
+    { label: `Part école dans ${data.areaLabel} (%, axe droit)`, color: '#E8B93B', swatch: 'box' },
+    { label: 'Tendance EPCI', color: '#9A9A9A', swatch: 'dash' },
+    { label: 'Tendance école', color: '#4DA6E8', swatch: 'dash' },
+    { label: 'Delta des projections', color: 'rgba(100,150,230,0.5)', swatch: 'box' },
+  ];
+  let ly = topY, leg = '';
+  const LX = W + GAP;
+  for (const it of items) {
+    if (it.swatch === 'line') leg += `<rect x="${LX+padL}" y="${(ly-5).toFixed(1)}" width="20" height="3" rx="1.5" fill="${it.color}"/>`;
+    else if (it.swatch === 'dash') leg += `<line x1="${LX+padL}" y1="${(ly-3.5).toFixed(1)}" x2="${LX+padL+20}" y2="${(ly-3.5).toFixed(1)}" stroke="${it.color}" stroke-width="2" stroke-dasharray="4 3"/>`;
+    else leg += `<rect x="${LX+padL}" y="${(ly-10).toFixed(1)}" width="16" height="11" fill="${it.color}"/>`;
+    leg += `<text x="${LX+padL+28}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;fill:#333">${escXml(it.label)}</text>`;
+    ly += lineH;
+  }
+  const legendH = ly + 8;
+  const contentH = Math.max(H, legendH);
+  const totalW = LX + LW, totalH = TH + contentH;
+  const legPanel = `<rect x="${LX}" y="0" width="${LW}" height="${contentH}" fill="#fafafa" stroke="#e0e0e0" stroke-width="1"/>` + leg;
+  const inner = `<style>${SCHOOL_CHART_EXPORT_CSS}</style>`
+    + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
+    + `<g transform="translate(0,${TH})">` + tmp.innerHTML + legPanel + `</g>`
+    + exportTitleSVG(titleTxt);
+  return wrapExportSVG(inner, totalW, totalH);
+}
+async function exportSchoolCompareChart(format) {
+  try {
+    const svgString = serializeSchoolCompareSVG();
+    if (!svgString) { alert("Aucun graphique à exporter."); return; }
+    const filename = `comparaison_base100_${new Date().toISOString().slice(0,10)}.${format}`;
+    if (format === 'svg') {
+      triggerDownload(filename, new Blob([svgString], { type: 'image/svg+xml' }));
+    } else {
+      const blob = await svgToPngBlob(svgString, EXPORT_W, EXPORT_H);
+      triggerDownload(filename, blob);
+    }
+  } catch (err) {
+    alert('Export échoué : ' + err.message);
+    console.error('[dataviz] Erreur export graphique école :', err);
+  }
+}
 function heatmapToSVG() {
   const grid = document.getElementById('heat-grid');
   const cells = [...grid.children];
@@ -2810,6 +2915,9 @@ document.getElementById('btn-toggle-schools').addEventListener('click', () => {
   document.getElementById('btn-toggle-schools').classList.toggle('active', schoolsModeActive);
 });
 document.getElementById('btn-schoolchart-expand').addEventListener('click', openSchoolChartModal);
+document.getElementById('info-school-chart').addEventListener('click', openSchoolChartModal);
+document.querySelectorAll('.sc-export-png').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); exportSchoolCompareChart('png'); }));
+document.querySelectorAll('.sc-export-svg').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); exportSchoolCompareChart('svg'); }));
 document.getElementById('chart-modal-close').addEventListener('click', closeSchoolChartModal);
 document.getElementById('chart-modal-backdrop').addEventListener('click', closeSchoolChartModal);
 document.addEventListener('keydown', ev => {
