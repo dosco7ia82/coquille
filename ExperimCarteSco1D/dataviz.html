@@ -417,6 +417,10 @@ button, select { font-family: inherit; }
 .c-line.hi { stroke-width: 3.4; opacity: 1; }
 .c-dot     { transition: opacity .15s; }
 .c-dot.dim { opacity: 0.12; }
+.c-label-bg   { pointer-events: none; transition: opacity .15s; }
+.c-label-bg.dim { opacity: 0.1; }
+.c-label-text { pointer-events: none; font-size: 11px; font-weight: 700; fill: #fff; transition: opacity .15s; }
+.c-label-text.dim { opacity: 0.15; }
 #curves-legend {
   flex-shrink: 0; width: 15rem; align-self: stretch; overflow: auto;
   background: #fafafa; border-left: 1px solid var(--border-default-grey); padding: 0.7rem;
@@ -2232,6 +2236,7 @@ function renderCurves() {
   }
 
   const pathD = arr => arr.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const labelPts = [];
   for (const c of codes) {
     const color = colorByCode(c);
     const pts = [];
@@ -2250,26 +2255,85 @@ function renderCurves() {
     else { addPath(pts.filter(p => p[4] <= dashFromIdx), false); addPath(pts.filter(p => p[4] >= dashFromIdx), true); }
     for (const p of pts) {
       const isConstat = p[4] <= idxRS25;
-      let mark;
-      if (isConstat) { const s=8; mark = el('rect', { class:'c-dot', x:p[0]-s/2, y:p[1]-s/2, width:s, height:s, fill:color, 'data-code':c }); }
-      else { mark = el('circle', { class:'c-dot', cx:p[0], cy:p[1], r:2.6, fill:color, 'data-code':c }); }
+      let mark, r;
+      if (isConstat) { const s=8; r = s/2; mark = el('rect', { class:'c-dot', x:p[0]-s/2, y:p[1]-s/2, width:s, height:s, fill:color, 'data-code':c }); }
+      else { r = 2.6; mark = el('circle', { class:'c-dot', cx:p[0], cy:p[1], r:r, fill:color, 'data-code':c }); }
       mark.addEventListener('mousemove', ev => showTip(`<strong>${cache.model.NOM_BY_CODE[c]||c}</strong><br>${p[2]} : ${formatVal(p[3])}`, ev.clientX, ev.clientY));
       mark.addEventListener('mouseleave', hideTip);
       svg.appendChild(mark);
+      labelPts.push({ x:p[0], y:p[1], r, val:p[3], color, code:c });
     }
   }
+  renderCurveValueLabels(svg, labelPts, W, H);
   buildCurvesLegend();
   applyCurvesFocus();
+}
+// Étiquettes de valeur par point : fond semi-transparent coloré selon la
+// courbe, centrées au-dessus du point par défaut ; si ça chevauche un autre
+// point ou une étiquette déjà placée, on essaie d'autres positions autour
+// (dessous, diagonales, côtés) avant de se rabattre sur la 1re en dernier recours.
+function renderCurveValueLabels(svg, pts, W, H) {
+  const placed = pts.map(p => ({ l: p.x - p.r - 1, r: p.x + p.r + 1, t: p.y - p.r - 1, b: p.y + p.r + 1 }));
+  const overlaps = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+  const gap = 4, padX = 4, padY = 2;
+  pts.forEach((p, idx) => {
+    const txt = el('text', { class:'c-label-text', 'text-anchor':'middle', 'dominant-baseline':'central', x:0, y:0 });
+    txt.textContent = formatCellVal(p.val);
+    svg.appendChild(txt);
+    let bbox;
+    try { bbox = txt.getBBox(); } catch (e) { bbox = null; }
+    const boxW = (bbox ? bbox.width : String(txt.textContent).length * 6.5) + padX * 2;
+    const boxH = (bbox ? bbox.height : 11) + padY * 2;
+    const off = p.r + gap;
+    const diagY = off * 0.55 + boxH * 0.3, diagX = boxW / 2 + 3;
+    const candidates = [
+      { cx: p.x, cy: p.y - off - boxH / 2 },
+      { cx: p.x, cy: p.y + off + boxH / 2 },
+      { cx: p.x + diagX, cy: p.y - diagY - boxH / 2 },
+      { cx: p.x - diagX, cy: p.y - diagY - boxH / 2 },
+      { cx: p.x + diagX, cy: p.y + diagY + boxH / 2 },
+      { cx: p.x - diagX, cy: p.y + diagY + boxH / 2 },
+      { cx: p.x + off + boxW / 2, cy: p.y },
+      { cx: p.x - off - boxW / 2, cy: p.y },
+    ];
+    let chosen = null;
+    for (const c of candidates) {
+      const rect = { l: c.cx - boxW / 2, r: c.cx + boxW / 2, t: c.cy - boxH / 2, b: c.cy + boxH / 2 };
+      if (rect.l < 2 || rect.r > W - 2 || rect.t < 2 || rect.b > H - 2) continue;
+      if (placed.some(ex => overlaps(rect, ex))) continue;
+      chosen = { cx: c.cx, cy: c.cy, rect };
+      break;
+    }
+    if (!chosen) {
+      const c = candidates[0];
+      const l = Math.max(2, Math.min(c.cx - boxW / 2, W - 2 - boxW));
+      const t = Math.max(2, Math.min(c.cy - boxH / 2, H - 2 - boxH));
+      chosen = { cx: l + boxW / 2, cy: t + boxH / 2, rect: { l, r: l + boxW, t, b: t + boxH } };
+    }
+    placed.push(chosen.rect);
+    const bg = el('rect', {
+      class: 'c-label-bg', 'data-code': p.code,
+      x: chosen.rect.l.toFixed(1), y: chosen.rect.t.toFixed(1),
+      width: boxW.toFixed(1), height: boxH.toFixed(1), rx: 3,
+      fill: p.color, 'fill-opacity': 0.78,
+    });
+    svg.insertBefore(bg, txt);
+    txt.setAttribute('x', chosen.cx.toFixed(1));
+    txt.setAttribute('y', chosen.cy.toFixed(1));
+    txt.setAttribute('data-code', p.code);
+  });
 }
 function applyCurvesFocus() {
   const foc = focusCodes.size > 0;
   document.querySelectorAll('.c-line').forEach(p => { p.classList.remove('hi'); p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))); });
   document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))));
+  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.toggle('dim', foc && !focusCodes.has(p.getAttribute('data-code'))));
 }
 function highlightCurve(code) {
   if (!code) { applyCurvesFocus(); return; }
   document.querySelectorAll('.c-line').forEach(p => { const on = p.getAttribute('data-code') === code; p.classList.toggle('hi', on); p.classList.toggle('dim', !on); });
   document.querySelectorAll('.c-dot').forEach(p => p.classList.toggle('dim', p.getAttribute('data-code') !== code));
+  document.querySelectorAll('.c-label-bg, .c-label-text').forEach(p => p.classList.toggle('dim', p.getAttribute('data-code') !== code));
 }
 function buildCurvesLegend() {
   const cache = scaleCache[state.echelle];
@@ -2488,7 +2552,8 @@ const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-zero{stroke:#b0b0b0;stroke-width:1.4;stroke-dasharray:2 3}
 .c-tick{font-size:15px;fill:#555}.c-xtick{font-size:16px;fill:#333;font-weight:700}
 .c-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.08em}
-.c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}`;
+.c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}
+.c-label-bg.dim{opacity:0.1}.c-label-text{font-size:11px;font-weight:700;fill:#fff}.c-label-text.dim{opacity:0.15}`;
 function serializeCurvesSVG() {
   const cache = scaleCache[state.echelle];
   const src = document.getElementById('curves-svg');
