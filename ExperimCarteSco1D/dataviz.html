@@ -1260,6 +1260,14 @@ async function ensureSchoolData() {
 }
 
 /* ── Données RPI (webhook correspondance UAI_RPI ↔ communes) ── */
+// Un code INSEE commune fait toujours 5 caractères (ex. 82121, 2A004,
+// 97411) : si Grist stocke la colonne en nombre plutôt qu'en texte, un zéro
+// initial peut être perdu (ex. "01001" -> 1001). On le restitue ici pour que
+// la clé corresponde bien au champ "code" renvoyé par geo.api.gouv.fr.
+function normalizeInseeCode(v) {
+  const s = String(v ?? '').trim();
+  return /^\d+$/.test(s) && s.length < 5 ? s.padStart(5, '0') : s;
+}
 let rpiModel = null;
 function buildRpiModel(records) {
   const model = { groups: [] }; // [{ uaiRpi, communeCodes:[...], communeNames:[...] }]
@@ -1273,7 +1281,7 @@ function buildRpiModel(records) {
   const byRpi = {};
   for (const row of records) {
     const uaiRpi = String(row[colUaiRpi] ?? '').trim();
-    const code = colCommuneCode ? String(row[colCommuneCode] ?? '').trim() : '';
+    const code = colCommuneCode ? normalizeInseeCode(row[colCommuneCode]) : '';
     const nom = colCommuneNom ? String(row[colCommuneNom] ?? '').trim() : '';
     if (!uaiRpi || !code) continue;
     if (!byRpi[uaiRpi]) byRpi[uaiRpi] = { uaiRpi, communeCodes: [], communeNames: [] };
@@ -1319,7 +1327,7 @@ async function ensureCommuneGeometries(codes) {
     try { fc = await fetchCommunesForDept(dept); }
     catch (err) { console.error(`[dataviz] Erreur chargement communes du département ${dept} :`, err); communeDeptsLoaded.add(dept); return; }
     for (const f of (fc.features || [])) {
-      const code = String(f.properties?.code ?? '');
+      const code = normalizeInseeCode(f.properties?.code);
       if (!code) continue;
       communeByCode[code] = { code, nom: f.properties?.nom || code, geometry: f.geometry };
     }
