@@ -17,6 +17,9 @@
      (bordures) dans le .xlsx. Vendorisé localement (vendor/xlsx-js-style.min.js,
      testé) plutôt que chargé depuis un CDN externe non vérifiable ici. -->
 <script src="vendor/xlsx-js-style.min.js"></script>
+<!-- Turf.js 7.3.5 (licence MIT) : fusion géométrique (turf.union) des
+     polygones communes d'un même RPI. Vendorisé et testé de la même façon. -->
+<script src="vendor/turf.min.js"></script>
 <style>
 :root {
   --background-default-grey: #f6f6f6;
@@ -500,6 +503,7 @@ button, select { font-family: inherit; }
               <div id="info-school-block" hidden>
                 <h4 id="info-school-title"></h4>
                 <p id="info-school-uai" class="small text-muted"></p>
+                <p id="info-school-rpi" class="small text-muted" hidden></p>
                 <table id="info-school-table">
                   <thead><tr><th>Rentrée</th><th>Effectifs</th><th>Variation</th><th>Pourcent.</th></tr></thead>
                   <tbody id="info-school-tbody"></tbody>
@@ -541,8 +545,13 @@ const CONFIG = {
   webhookProjEpci:     'https://n8n.incubateur.education.gouv.fr/webhook/e8a3319e-9447-44ed-af34-8e7672e473df',
   webhookEcoles:       'https://n8n.incubateur.education.gouv.fr/webhook/e9a3319e-9447-44ed-af34-8e7672e473df',
   webhookCirco:        'https://n8n.incubateur.education.gouv.fr/webhook/exa3319e-9447-44ed-af34-8e7672e473df',
+  webhookRpi:          'https://n8n.incubateur.education.gouv.fr/webhook/eya3319e-9447-44ed-af34-8e7672e473df',
   geojsonEpci:  './epci.geojson',
   geojsonCirco: './circonscriptions.geojson',
+  // API officielle (Etalab) des contours de communes, utilisée uniquement
+  // pour fusionner les polygones des communes d'un même RPI. Pas de fichier
+  // local : cette couche n'est chargée qu'à la demande (mode "écoles").
+  communesApi: 'https://geo.api.gouv.fr/communes',
 };
 const RENTREES_ALL = ['RS19','RS20','RS21','RS22','RS23','RS24','RS25','RS26','RS27','RS28','RS29','RS30'];
 const RS_EXCLUDE_TIMELINE = new Set(['RS19','RS20']);
@@ -955,6 +964,7 @@ function enterSchoolsMode() {
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
   closeInfoPanel();
   showSchoolsForFeature();
+  showRpiLayer();
   buildTimeline();
   refreshSegButtons();
   updateTitle();
@@ -962,6 +972,7 @@ function enterSchoolsMode() {
 function exitSchoolsMode() {
   schoolsModeActive = false;
   clearSchoolLayer();
+  clearRpiLayer();
   if (geojsonLayer) { geojsonLayer.eachLayer(l => geojsonLayer.resetStyle(l)); addLabels(); }
   closeInfoPanel();
   updateLegend();
@@ -1039,6 +1050,22 @@ function showSchoolInfo(school) {
   document.getElementById('info-school-block').hidden = false;
   document.getElementById('map-info-panel').classList.add('show');
   updateLegendOffset();
+  showSchoolRpiInfo(school, ++infoSchoolToken);
+}
+// Chargement asynchrone (webhook RPI) après affichage du reste du volet ;
+// token = protection contre un second clic pendant le chargement.
+let infoSchoolToken = 0;
+async function showSchoolRpiInfo(school, token) {
+  const rpiEl = document.getElementById('info-school-rpi');
+  rpiEl.hidden = true; rpiEl.textContent = '';
+  let rpi;
+  try { rpi = await ensureRpiData(); }
+  catch (err) { console.error('[dataviz] Erreur chargement des RPI :', err); return; }
+  if (token !== infoSchoolToken) return;
+  const group = findRpiForSchool(school, rpi);
+  if (!group) return;
+  rpiEl.textContent = `RPI ${group.communeNames.join(' / ')} (${group.uaiRpi})`;
+  rpiEl.hidden = false;
 }
 
 /* ── Conversion de coordonnées écoles (Lambert-93 ou lat/lng inversés) ── */
@@ -1171,10 +1198,134 @@ async function ensureSchoolData() {
   return schoolModel;
 }
 
+/* ── Données RPI (webhook correspondance UAI_RPI ↔ communes) ── */
+let rpiModel = null;
+function buildRpiModel(records) {
+  const model = { groups: [] }; // [{ uaiRpi, communeCodes:[...], communeNames:[...] }]
+  if (!records || records.length === 0) return model;
+  const keys = Object.keys(records[0]);
+  const find = re => keys.find(k => re.test(k));
+  const colUaiRpi = find(/uai.*rpi/i) || find(/rpi/i);
+  const colCommuneCode = find(/code.*insee/i) || find(/insee/i) || find(/code.*commune/i);
+  const colCommuneNom = find(/nom.*commune/i) || keys.find(k => k !== colUaiRpi && k !== colCommuneCode && /commune/i.test(k));
+  console.debug('[dataviz] colonnes détectées (RPI) :', { colUaiRpi, colCommuneCode, colCommuneNom });
+  const byRpi = {};
+  for (const row of records) {
+    const uaiRpi = String(row[colUaiRpi] ?? '').trim();
+    const code = colCommuneCode ? String(row[colCommuneCode] ?? '').trim() : '';
+    const nom = colCommuneNom ? String(row[colCommuneNom] ?? '').trim() : '';
+    if (!uaiRpi || !code) continue;
+    if (!byRpi[uaiRpi]) byRpi[uaiRpi] = { uaiRpi, communeCodes: [], communeNames: [] };
+    byRpi[uaiRpi].communeCodes.push(code);
+    byRpi[uaiRpi].communeNames.push(nom || code);
+  }
+  model.groups = Object.values(byRpi);
+  return model;
+}
+async function ensureRpiData() {
+  if (rpiModel) return rpiModel;
+  const records = await postJson(CONFIG.webhookRpi, state.sessId);
+  rpiModel = buildRpiModel(records);
+  return rpiModel;
+}
+// Rattachement école → RPI par nom de commune (seule donnée commune aux deux
+// sources : la table écoles n'a pas de code INSEE, la table RPI n'a pas
+// d'UAI d'école). Normalisation tolérante à la casse/aux accents.
+function normalizeName(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+function findRpiForSchool(school, rpi) {
+  if (!school?.commune || !rpi?.groups?.length) return null;
+  const key = normalizeName(school.commune);
+  return rpi.groups.find(g => g.communeNames.some(n => normalizeName(n) === key)) || null;
+}
+
+/* ── Contours communes (geo.api.gouv.fr) + fusion des polygones d'un RPI ──
+   Couche annexe, indépendante des webhooks n8n : les contours de communes
+   ne changent quasiment jamais, on les charge à la demande (mode "écoles"
+   uniquement) et on les met en cache par département. */
+function deptFromInseeCode(code) {
+  return /^(97|98)/.test(code) ? code.slice(0, 3) : code.slice(0, 2);
+}
+let communeByCode = {};
+const communeDeptsLoaded = new Set();
+async function fetchCommunesForDept(dept) {
+  const url = `${CONFIG.communesApi}?codeDepartement=${encodeURIComponent(dept)}&geometry=contour&format=geojson&fields=nom,code`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erreur chargement des contours communes (HTTP ${res.status}).`);
+  return await res.json();
+}
+async function ensureCommuneGeometries(codes) {
+  const depts = [...new Set(codes.map(deptFromInseeCode))].filter(d => !communeDeptsLoaded.has(d));
+  await Promise.all(depts.map(async dept => {
+    let fc;
+    try { fc = await fetchCommunesForDept(dept); }
+    catch (err) { console.error(`[dataviz] Erreur chargement communes du département ${dept} :`, err); communeDeptsLoaded.add(dept); return; }
+    for (const f of (fc.features || [])) {
+      const code = String(f.properties?.code ?? '');
+      if (!code) continue;
+      communeByCode[code] = { code, nom: f.properties?.nom || code, geometry: f.geometry };
+    }
+    communeDeptsLoaded.add(dept);
+  }));
+}
+function unionCommuneGroup(codes) {
+  const feats = codes.map(c => communeByCode[c]).filter(Boolean)
+    .map(c => ({ type: 'Feature', properties: {}, geometry: c.geometry }));
+  if (feats.length === 0) return null;
+  if (feats.length === 1) return feats[0];
+  try {
+    return turf.union({ type: 'FeatureCollection', features: feats });
+  } catch (err) {
+    console.error('[dataviz] Erreur fusion des polygones communes (RPI) :', err);
+    return feats[0];
+  }
+}
+let rpiGeojson = null;
+async function ensureRpiGeometry() {
+  if (rpiGeojson) return rpiGeojson;
+  const rpi = await ensureRpiData();
+  if (!rpi.groups.length) { rpiGeojson = { type: 'FeatureCollection', features: [] }; return rpiGeojson; }
+  const allCodes = rpi.groups.flatMap(g => g.communeCodes);
+  await ensureCommuneGeometries(allCodes);
+  const features = [];
+  for (const g of rpi.groups) {
+    const merged = unionCommuneGroup(g.communeCodes);
+    if (!merged) continue;
+    features.push({
+      type: 'Feature',
+      properties: { uaiRpi: g.uaiRpi, communeNames: g.communeNames },
+      geometry: merged.geometry,
+    });
+  }
+  rpiGeojson = { type: 'FeatureCollection', features };
+  return rpiGeojson;
+}
+
 /* ── Couche "Écoles" (drill-down) ── */
 let schoolLayerGroup = null;
 function clearSchoolLayer() {
   if (schoolLayerGroup) { schoolLayerGroup.remove(); schoolLayerGroup = null; }
+}
+/* ── Couche "RPI" (regroupements pédagogiques intercommunaux) : contours
+   fusionnés des communes membres, visible uniquement en mode "écoles". ── */
+let rpiLayer = null;
+function clearRpiLayer() {
+  if (rpiLayer) { rpiLayer.remove(); rpiLayer = null; }
+}
+function rpiPolygonStyle() {
+  // Moins gras que le contour simplifié des EPCI/circo (weight 4) en mode
+  // écoles ; pointillé pour bien le distinguer, aucun remplissage.
+  return { weight: 2, color: '#111', dashArray: '5 4', fillOpacity: 0, interactive: false };
+}
+async function showRpiLayer() {
+  let fc;
+  try { fc = await ensureRpiGeometry(); }
+  catch (err) { console.error('[dataviz] Erreur chargement des contours RPI :', err); return; }
+  if (!schoolsModeActive) return; // le mode a pu être désactivé pendant le chargement
+  clearRpiLayer();
+  if (!fc.features.length) return;
+  rpiLayer = L.geoJSON(fc, { style: rpiPolygonStyle }).addTo(map);
 }
 // Classes à pas fixe (5 élèves en Variation, 1 point en Pourcentage), même
 // palette divergente que les légendes EPCI/circo (buildRelatifColors).
