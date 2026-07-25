@@ -3166,11 +3166,14 @@ async function init() {
   refreshSegButtons();
   try {
     const session = await postJson(CONFIG.webhookSession, state.sessId);
-    if (session.status === 'inactive') {
+    // Liste blanche stricte : seul un statut explicitement "active" autorise
+    // l'accès (un SessID erroné/inconnu ne doit jamais passer par défaut,
+    // même si le webhook répond autre chose qu' "inactive").
+    if (session.status !== 'active') {
       state.sessionActive = false;
-      state.sessionMessage = session.message;
+      state.sessionMessage = session.message || 'Accès non autorisé.';
       disableNav();
-      showSessionError(session.message);
+      showSessionError(state.sessionMessage);
       document.getElementById('page-title').textContent = 'Session non autorisée';
       return;
     }
