@@ -331,6 +331,7 @@ button, select { font-family: inherit; }
 
 /* Popup plein écran pour la comparaison en base 100 */
 #chart-modal { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; }
+#chart-modal[hidden] { display: none; }
 #chart-modal-backdrop { position: absolute; inset: 0; background: rgba(20,20,20,0.55); }
 #chart-modal-card {
   position: relative; background: #fff; border-radius: 0.4rem; box-shadow: 0 8px 40px rgba(0,0,0,0.35);
