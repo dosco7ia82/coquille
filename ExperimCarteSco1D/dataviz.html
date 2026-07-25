@@ -921,19 +921,14 @@ function buildModel(records, echelle) {
     model.COLORS.variation = buildRelatifColors(breaks);
     model.N.variation = breaks.length - 1;
   }
-  // Classes "cumul" (variation cumulée RS26-RS30)
+  // Classes "cumul" (variation cumulée RS26-RS30) : ruptures naturelles
+  // (Jenks, 5 classes max), sur le même modèle que "cumul pourcentage",
+  // plus adaptées que le pas fixe sur ce point.
   {
-    let minC = 0;
-    for (const v of Object.values(model.CUMUL)) if (v < minC) minC = v;
-    const nC = 10;
-    const rawS = Math.ceil(Math.abs(minC) / nC);
-    const sC = Math.max(5, Math.ceil(rawS/5)*5);
-    const loC = Math.floor(minC / sC) * sC;
-    let breaks = [];
-    for (let v = loC; v <= 0; v += sC) breaks.push(v);
-    if (breaks[breaks.length-1] < 0) breaks.push(0);
+    const vals = Object.values(model.CUMUL);
+    const { breaks, colors } = buildJenksColors(vals, 5);
     model.BREAKS.cumul = breaks;
-    model.COLORS.cumul = buildRelatifColors(breaks);
+    model.COLORS.cumul = colors;
     model.N.cumul = breaks.length - 1;
   }
   // Classes "effectifs" (absolu)
@@ -1043,11 +1038,13 @@ function currentRentree() {
   return cache.model.RENTREES_DISPO[state.rentreeIdx];
 }
 function isCumulMode() { return currentRentree() === 'CUMUL' && state.type === 'variation'; }
-// Clé de classification active : le point Cumul RS26-RS30 en unité Pourcentage
-// utilise ses propres ruptures naturelles (Jenks), calculées sur les valeurs
-// cumulées et non sur celles de la variation annuelle.
+// Clé de classification active : le point Cumul RS26-RS30 utilise ses propres
+// ruptures naturelles (Jenks), calculées sur les valeurs cumulées et non sur
+// celles de la variation annuelle — en Pourcentage comme en Variation.
 function activeBreakKey() {
-  return (currentRentree() === 'CUMUL' && state.type === 'pourcentage') ? 'cumulPourcentage' : state.type;
+  if (currentRentree() === 'CUMUL' && state.type === 'pourcentage') return 'cumulPourcentage';
+  if (isCumulMode()) return 'cumul';
+  return state.type;
 }
 
 function getValAt(code, r) {
