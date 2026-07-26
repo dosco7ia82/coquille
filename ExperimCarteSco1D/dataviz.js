@@ -700,7 +700,7 @@ function drawSchoolCompareChart(svgEl, data) {
   const { years, school100, area100, pct, fp, schoolVals, areaVals, cibleEpci100, tendanceEcole100, areaLabel } = data;
   const W = 420, H = 190;
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const mL = 46, mR = 44, mT = 20, mB = 16;
+  const mL = 28, mR = 26, mT = 20, mB = 16;
   const plotW = W - mL - mR, plotH = H - mT - mB;
   const n = years.length;
   const x = i => mL + (n === 1 ? plotW / 2 : i * plotW / (n - 1));
@@ -1990,25 +1990,25 @@ function applySwatchColors(container) {
 function currentTitleText() {
   return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
 }
-// Toutes les images exportées (PNG/SVG, les 4 vues) sortent au format fixe
-// 1980×1200px/96dpi. Le contenu (bandeau titre + contenu principal + légende,
-// où le contenu principal occupe toujours 100% de la largeur — cf.
-// exportTitleBanner, qui adapte le titre à cette largeur plutôt que
-// l'inverse) est mis à l'échelle par contenance (letterboxing, sans
-// déformation ni recadrage) et centré dans ce cadre fixe ; les marges
-// résultantes restent modestes puisque le contenu lui-même n'a déjà plus de
-// grand vide interne, contrairement à l'ancien cadre fixe où le contenu
-// entier (pas seulement le cadre) restait minuscule.
-const EXPORT_W = 1980, EXPORT_H = 1200;
+// Toutes les images exportées (PNG/SVG, les 4 vues) sortent en largeur fixe
+// 1980px/96dpi ; la hauteur suit exactement l'aspect du contenu (bandeau
+// titre + contenu principal + légende, où le contenu principal occupe
+// toujours 100% de la largeur — cf. exportTitleBanner, qui adapte le titre
+// à cette largeur plutôt que l'inverse). Un contain-fit avec une hauteur
+// FIXE (1980×1200) letterboxait horizontalement dès que le contenu était un
+// peu plus haut que large (bandeau + légende ajoutés sous un contenu déjà
+// proche de 1980:1200) — d'où les marges blanches inutiles sur les côtés.
+// En dérivant la hauteur du contenu plutôt qu'en la fixant, la largeur est
+// toujours utilisée à 100%, sans jamais recadrer ni déborder.
+const EXPORT_W = 1980;
 function wrapExportSVG(inner, cw, ch) {
-  const scale = Math.min(EXPORT_W / cw, EXPORT_H / ch);
-  const fittedW = cw * scale, fittedH = ch * scale;
-  const offsetX = (EXPORT_W - fittedW) / 2, offsetY = (EXPORT_H - fittedH) / 2;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
-    + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
-    + `<g transform="translate(${offsetX.toFixed(2)},${offsetY.toFixed(2)}) scale(${scale.toFixed(6)})">${inner}</g>`
+  const scale = EXPORT_W / cw;
+  const height = Math.round(ch * scale);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${height}" viewBox="0 0 ${EXPORT_W} ${height}">`
+    + `<rect width="${EXPORT_W}" height="${height}" fill="#ffffff"/>`
+    + `<g transform="scale(${scale.toFixed(6)})">${inner}</g>`
     + `</svg>`;
-  return { svg, width: EXPORT_W, height: EXPORT_H };
+  return { svg, width: EXPORT_W, height };
 }
 // Bord long de la carte Leaflet hors-écran (résolution de rasterisation des
 // tuiles avant l'ajustement final à EXPORT_W×EXPORT_H ci-dessus) : distinct
@@ -2127,15 +2127,22 @@ function serializeCurvesSVG() {
 // 420×190 est réutilisé, mais l'export l'agrandit ensuite jusqu'au format
 // fixe 1980×1200 — sans ce correctif les textes tuné pour un petit aperçu à
 // l'écran paraissent disproportionnés une fois le chart affiché en grand).
+// Le graphique école (420×190) est bien plus étroit que les autres vues
+// (courbes/tableau font plusieurs centaines d'unités de plus) : à largeur de
+// sortie fixe (1980px), il subit un facteur d'agrandissement bien plus fort
+// (1980/420 ≈ 4.7× contre ~2.5× pour un contenu deux fois plus large) — des
+// polices proportionnées à son propre petit aperçu paraissent donc bien plus
+// grosses que celles des autres exports une fois toutes ramenées à la même
+// largeur finale. D'où des tailles nettement plus petites ici qu'ailleurs.
 const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
-.sc-grid{stroke:#e6e6e6;stroke-width:1}.sc-axis{stroke:#999;stroke-width:1}
-.sc-ref{stroke:#aaa;stroke-width:1;stroke-dasharray:3 3}
-.sc-tick{font-size:12px;fill:#777}.sc-tick2{font-size:11px;fill:#b8860b}
-.sc-xtick{font-size:11px;fill:#555}
-.sc-ytitle{font-size:11px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;fill:#777}
-.sc-zone-lbl{font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}
-.sc-line{fill:none;stroke-width:2.2}.sc-trend{fill:none;stroke-width:1.7;stroke-dasharray:5 3}
-.sc-bar{fill:#E8B93B;fill-opacity:0.28}.sc-dot{r:2.8}`;
+.sc-grid{stroke:#e6e6e6;stroke-width:0.6}.sc-axis{stroke:#999;stroke-width:0.6}
+.sc-ref{stroke:#aaa;stroke-width:0.6;stroke-dasharray:2 2}
+.sc-tick{font-size:8px;fill:#777}.sc-tick2{font-size:7px;fill:#b8860b}
+.sc-xtick{font-size:7px;fill:#555}
+.sc-ytitle{font-size:7px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;fill:#777}
+.sc-zone-lbl{font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}
+.sc-line{fill:none;stroke-width:1.4}.sc-trend{fill:none;stroke-width:1.1;stroke-dasharray:3 2}
+.sc-bar{fill:#E8B93B;fill-opacity:0.28}.sc-dot{r:1.8}`;
 // Export du graphique de comparaison base 100 (volet école) : redessine le
 // chart dans un <svg> détaché (même viewBox fixe que l'affichage), puis
 // reconstitue une légende en SVG (le HTML de #info-school-chart-legend
@@ -2168,7 +2175,7 @@ function serializeSchoolCompareSVG() {
   // le graphique école reste étroit (420 unités) même une fois élargi au
   // format d'export, une légende à l'échelle des autres vues y paraît
   // disproportionnée.
-  const rowGap = 14, itemGap = 16, swatchW = 16, swatchGap = 5, lineH = 16, itemCharW = 5.6;
+  const rowGap = 10, itemGap = 12, swatchW = 11, swatchGap = 4, lineH = 12, itemCharW = 4.2;
   const rows = [];
   let row = [], rowW = 0;
   for (const it of items) {
@@ -2184,10 +2191,10 @@ function serializeSchoolCompareSVG() {
   for (const r of rows) {
     let lx = (W - r.w) / 2;
     for (const it of r.items) {
-      if (it.swatch === 'line') leg += `<rect x="${lx.toFixed(1)}" y="${(ly-4).toFixed(1)}" width="${swatchW}" height="2.5" rx="1.2" fill="${it.color}"/>`;
-      else if (it.swatch === 'dash') leg += `<line x1="${lx.toFixed(1)}" y1="${(ly-3).toFixed(1)}" x2="${(lx+swatchW).toFixed(1)}" y2="${(ly-3).toFixed(1)}" stroke="${it.color}" stroke-width="1.6" stroke-dasharray="3 2"/>`;
-      else leg += `<rect x="${lx.toFixed(1)}" y="${(ly-8).toFixed(1)}" width="13" height="9" fill="${it.color}"/>`;
-      leg += `<text x="${(lx+swatchW+swatchGap).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;fill:#333">${escXml(it.label)}</text>`;
+      if (it.swatch === 'line') leg += `<rect x="${lx.toFixed(1)}" y="${(ly-3).toFixed(1)}" width="${swatchW}" height="1.8" rx="0.9" fill="${it.color}"/>`;
+      else if (it.swatch === 'dash') leg += `<line x1="${lx.toFixed(1)}" y1="${(ly-2.2).toFixed(1)}" x2="${(lx+swatchW).toFixed(1)}" y2="${(ly-2.2).toFixed(1)}" stroke="${it.color}" stroke-width="1.2" stroke-dasharray="2.5 1.5"/>`;
+      else leg += `<rect x="${lx.toFixed(1)}" y="${(ly-6).toFixed(1)}" width="9" height="6.5" fill="${it.color}"/>`;
+      leg += `<text x="${(lx+swatchW+swatchGap).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:8px;fill:#333">${escXml(it.label)}</text>`;
       lx += it.w + itemGap;
     }
     ly += lineH;
@@ -2434,41 +2441,31 @@ function drawMapLabelsCanvas(ctx, cache, latLng2px) {
     });
   }
 }
-// Légende (mêmes ruptures/couleurs que #map-legend, cf. updateLegend) sous
-// forme de lignes centrées et enroulées dans la largeur disponible, comme
-// les 3 autres vues, plutôt que superposée dans une poche libre du
-// territoire (mécanisme de recherche géométrique du widget de référence,
-// plus complexe et plus fragile pour un gain visuel marginal).
-function buildMapLegendRows(totalW) {
+// Légende (mêmes ruptures/couleurs que #map-legend, cf. updateLegend) : bloc
+// flottant en bas à droite, par-dessus la carte — comme à l'écran (cf.
+// #map-legend en CSS) — plutôt qu'une bande sous la carte qui grandirait le
+// canevas et ne correspondrait plus à l'aperçu direct.
+function buildMapLegendOverlay(mapW, mapH) {
   const cache = scaleCache[state.echelle];
   const key = activeBreakKey();
   const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
-  if (!breaks || breaks.length < 2 || !n) return { svg: '', height: 0 };
+  if (!breaks || breaks.length < 2 || !n) return '';
+  const margin = 20, pad = 18, itemH = 30, swatchW = 26, swatchH = 18, swatchGap = 10, titleH = 34;
   const items = [];
   for (let i = n - 1; i >= 0; i--) items.push({ label: fmtLegendRange(breaks[i], breaks[i+1]), color: colors[i] });
-  const itemGap = 20, swatchW = 20, swatchH = 13, swatchGap = 6, lineH = 20, itemCharW = 6.8;
-  const rows = []; let row = [], rowW = 0;
-  for (const it of items) {
-    const itemW = swatchW + swatchGap + it.label.length * itemCharW;
-    const addGap = row.length ? itemGap : 0;
-    if (row.length && rowW + addGap + itemW > totalW) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
-    row.push({ ...it, w: itemW });
-    rowW += (row.length > 1 ? itemGap : 0) + itemW;
-  }
-  if (row.length) rows.push({ items: row, w: rowW });
-  const titleTxt = escXml(legendTitle());
-  let leg = `<text x="${(totalW/2).toFixed(1)}" y="16" text-anchor="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;fill:#333">${titleTxt}</text>`;
-  let ly = 36;
-  for (const r of rows) {
-    let lx = (totalW - r.w) / 2;
-    for (const it of r.items) {
-      leg += `<rect x="${lx.toFixed(1)}" y="${(ly-swatchH+2).toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="2" fill="${it.color}" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
-      leg += `<text x="${(lx+swatchW+swatchGap).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;fill:#333">${escXml(it.label)}</text>`;
-      lx += it.w + itemGap;
-    }
-    ly += lineH;
-  }
-  return { svg: leg, height: ly - lineH + 8 };
+  const textW = Math.max(...items.map(it => it.label.length * 9.5), legendTitle().length * 11);
+  const boxW = pad * 2 + swatchW + swatchGap + textW;
+  const boxH = pad * 2 + titleH + items.length * itemH;
+  const boxX = mapW - boxW - margin, boxY = mapH - boxH - margin;
+  let svg = `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="6" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
+  const innerX = boxX + pad;
+  svg += `<text x="${innerX.toFixed(1)}" y="${(boxY + pad + 20).toFixed(1)}" font-family="Arial" font-size="21" font-weight="700" fill="#222">${escXml(legendTitle())}</text>`;
+  items.forEach((it, i) => {
+    const iy = boxY + pad + titleH + i * itemH;
+    svg += `<rect x="${innerX.toFixed(1)}" y="${iy.toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="3" fill="${it.color}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>`;
+    svg += `<text x="${(innerX + swatchW + swatchGap).toFixed(1)}" y="${(iy + swatchH - 4).toFixed(1)}" font-family="Arial" font-size="17" fill="#222">${escXml(it.label)}</text>`;
+  });
+  return svg;
 }
 async function buildMapExportSVG(fmt) {
   const cache = scaleCache[state.echelle];
@@ -2498,15 +2495,14 @@ async function buildMapExportSVG(fmt) {
         + buildMapPolygonsSVG(cache, latLng2px) + buildMapLabelsSVG(cache, latLng2px);
     }
 
+    const legendSVG = buildMapLegendOverlay(mapW, mapH);
     const totalW = mapW;
-    const legend = buildMapLegendRows(totalW);
     const banner = exportTitleBanner(titleTxt, totalW);
     const contentY = banner.height + EXPORT_GAP;
-    const totalH = contentY + mapH + (legend.height ? 16 + legend.height : 0);
+    const totalH = contentY + mapH;
     const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
       + banner.svg
-      + `<g transform="translate(0,${contentY.toFixed(1)})">${mapInner}</g>`
-      + (legend.svg ? `<g transform="translate(0,${(contentY + mapH + 16).toFixed(1)})">${legend.svg}</g>` : '');
+      + `<g transform="translate(0,${contentY.toFixed(1)})">${mapInner}${legendSVG}</g>`;
     return wrapExportSVG(inner, totalW, totalH);
   } finally {
     exportMap.remove();
