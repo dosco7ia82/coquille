@@ -569,12 +569,14 @@ async function showFeatureSchoolsList(feature) {
   const isPct = state.type === 'pourcentage';
   let html = '';
   for (const commune of communes) {
-    const schools = byCommune[commune].slice().sort((a, b) => schoolDisplayName(a).localeCompare(schoolDisplayName(b), 'fr'));
+    const schools = byCommune[commune].slice().sort((a, b) => schoolDisplayName(a, false).localeCompare(schoolDisplayName(b, false), 'fr'));
     html += `<div class="fsl-commune">${escXml(commune)}</div>`;
     for (const s of schools) {
       const val = isPct ? s.cumulPct : s.cumul;
       const fmt = isPct ? fmtSchoolPct(val) : (val == null ? '·' : formatSchoolVal(val));
-      html += `<div class="fsl-row"><span class="fsl-name">${escXml(schoolDisplayName(s))}</span><span class="fsl-value">${fmt}</span></div>`;
+      // Le nom de la commune est déjà l'en-tête de groupe ci-dessus : pas
+      // besoin de le répéter après chaque école.
+      html += `<div class="fsl-row"><span class="fsl-name">${escXml(schoolDisplayName(s, false))}</span><span class="fsl-value">${fmt}</span></div>`;
     }
   }
   html += `<p class="fsl-disclaimer">Du fait des arrondis, la somme des variations peut ne pas correspondre à la variation totale. C'est cette dernière qu'il faut retenir.</p>`;
@@ -1246,9 +1248,9 @@ function showSchoolLegend(breaks, colors, isPct) {
   el.innerHTML = html;
   applySwatchColors(el);
 }
-function schoolDisplayName(school) {
+function schoolDisplayName(school, withCommune = true) {
   const main = [school.sigle, school.denomination].filter(Boolean).join(' ');
-  return school.commune ? `${main} (${school.commune})` : main;
+  return (withCommune && school.commune) ? `${main} (${school.commune})` : main;
 }
 // Ordre de priorité dans la grille : maternelle publique, puis élémentaire
 // publique, puis primaire (1er degré) publique.
@@ -2307,11 +2309,15 @@ async function exportAllDataXLSX() {
 // Les paramètres d'URL "timeline"/"ecoles" dépendent des données chargées
 // (RENTREES_DISPO, carte) : appliqués une seule fois, au tout premier rendu.
 let initialUrlParamsApplied = false;
+function showLoader() { document.getElementById('page-loader').hidden = false; }
+function hideLoader() { document.getElementById('page-loader').hidden = true; }
 async function renderCurrentView() {
   if (state.sessionActive !== true) {
     showSessionError(state.sessionMessage || 'Accès non autorisé.');
+    hideLoader();
     return;
   }
+  showLoader();
   try {
     const cache = await ensureScaleData(state.echelle);
     if (!initialUrlParamsApplied && urlTimeline) {
@@ -2340,6 +2346,8 @@ async function renderCurrentView() {
     syncUrlFromState();
   } catch (err) {
     showSessionError(`Erreur lors du chargement des données : ${err.message}`);
+  } finally {
+    hideLoader();
   }
 }
 
@@ -2509,6 +2517,7 @@ window.addEventListener('resize', () => {
 
 /* ══════════════════════ INITIALISATION ══════════════════════ */
 async function init() {
+  showLoader();
   refreshSegButtons();
   try {
     const session = await postJson(CONFIG.webhookSession, state.sessId);
@@ -2521,6 +2530,7 @@ async function init() {
       disableNav();
       showSessionError(state.sessionMessage);
       document.getElementById('page-title').textContent = 'Session non autorisée';
+      hideLoader();
       return;
     }
     state.sessionActive = true;
@@ -2530,6 +2540,7 @@ async function init() {
     disableNav();
     showSessionError(state.sessionMessage);
     document.getElementById('page-title').textContent = 'Erreur';
+    hideLoader();
     return;
   }
   await renderCurrentView();
