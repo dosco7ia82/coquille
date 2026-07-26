@@ -11,6 +11,12 @@ const CONFIG = {
   webhookEcoles:       'https://n8n.incubateur.education.gouv.fr/webhook/b0d39421-9814-4342-8bf9-7f73b4e201a8',
   webhookCirco:        'https://n8n.incubateur.education.gouv.fr/webhook/91ea886f-f504-4f9d-9834-2b1471101ffb',
   webhookRpi:          'https://n8n.incubateur.education.gouv.fr/webhook/a12f23f6-d1b9-48d3-993d-88dc4a62d5a9',
+  // Journalisation (table Grist Sessions_logs_) : distinct du contrôle
+  // d'accès synchrone webhookSession ci-dessus — cycle de vie propre (un
+  // appel "start" à l'ouverture, un "end" en quittant la page), l'adresse IP
+  // et les horodatages Debut/Fin étant renseignés côté n8n (pas dans cette
+  // page, qui n'a pas accès à sa propre IP publique).
+  webhookSessionsLog: 'https://n8n.incubateur.education.gouv.fr/webhook/e6c4aa41-a123-4f83-8811-71f7ed3ed30c',
   geojsonEpci:  './epci.geojson',
   geojsonCirco: './circonscriptions.geojson',
   // API officielle (Etalab) des contours de communes, utilisée uniquement
@@ -75,6 +81,22 @@ async function postJson(url, sessId) {
   });
   if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
   return await res.json();
+}
+// Journalisation Sessions_logs_ (Grist) : un appel "start" à l'ouverture
+// (fetch, best-effort — l'échec ne doit jamais bloquer l'accès à la page),
+// un "end" en quittant (sendBeacon, seule API fiable pour envoyer une
+// requête pendant le déchargement de la page ; un fetch classique peut être
+// annulé à ce moment-là). n8n distingue les deux via "action" et upsert la
+// ligne Grist par SessID (Debut/Fin/Adresse_IP renseignés côté n8n).
+function logSessionEvent(action) {
+  if (!state.sessId) return;
+  const payload = JSON.stringify({ SessID: state.sessId, action });
+  if (action === 'end' && navigator.sendBeacon) {
+    navigator.sendBeacon(CONFIG.webhookSessionsLog, new Blob([payload], { type: 'application/json' }));
+  } else {
+    fetch(CONFIG.webhookSessionsLog, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true })
+      .catch(err => console.error('[dataviz] Erreur journalisation session :', err));
+  }
 }
 async function fetchGeojson(url) {
   const res = await fetch(url);
@@ -3130,6 +3152,7 @@ async function init() {
       return;
     }
     state.sessionActive = true;
+    logSessionEvent('start');
   } catch (err) {
     state.sessionActive = false;
     state.sessionMessage = `Erreur lors de la vérification de la session : ${err.message}`;
@@ -3142,3 +3165,7 @@ async function init() {
   await renderCurrentView();
 }
 document.addEventListener('DOMContentLoaded', init);
+// pagehide (et non beforeunload/unload, de moins en moins fiables et
+// dépréciés sur certains navigateurs) : se déclenche aussi bien en fermant
+// l'onglet qu'en naviguant ailleurs, y compris sur mobile.
+window.addEventListener('pagehide', () => { if (state.sessionActive) logSessionEvent('end'); });
