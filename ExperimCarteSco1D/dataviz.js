@@ -1990,21 +1990,30 @@ function applySwatchColors(container) {
 function currentTitleText() {
   return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
 }
-// Dimensions d'export dérivées du contenu (cw × ch), plutôt qu'un cadre fixe
-// dans lequel le contenu était mis à l'échelle puis lettrboxé (grandes marges
-// mortes dès que l'aspect du contenu s'écartait de celui du cadre — un
-// graphique école étroit et haut, un tableau très large, etc. ne
-// correspondent jamais au même ratio). Le bord long vise EXPORT_LONG_EDGE,
-// l'autre en déduit sa taille : l'image finale a exactement le ratio du
-// contenu, sans marge morte ni recadrage.
-const EXPORT_LONG_EDGE = 2000;
+// Toutes les images exportées (PNG/SVG, les 4 vues) sortent au format fixe
+// 1980×1200px/96dpi. Le contenu (bandeau titre + contenu + légende, déjà
+// dimensionné pour minimiser ses propres marges mortes — cf. exportTitleBanner
+// / titleBannerMinWidth) est mis à l'échelle par contenance (letterboxing,
+// sans déformation ni recadrage) et centré dans ce cadre fixe ; les marges
+// résultantes restent modestes puisque le contenu lui-même n'a déjà plus de
+// grand vide interne, contrairement à l'ancien cadre fixe où le contenu
+// entier (pas seulement le cadre) restait minuscule.
+const EXPORT_W = 1980, EXPORT_H = 1200;
 function wrapExportSVG(inner, cw, ch) {
-  const scale = EXPORT_LONG_EDGE / Math.max(cw, ch);
-  const width = Math.round(cw * scale), height = Math.round(ch * scale);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${cw} ${ch}">`
-    + `<rect width="${cw}" height="${ch}" fill="#ffffff"/>${inner}</svg>`;
-  return { svg, width, height };
+  const scale = Math.min(EXPORT_W / cw, EXPORT_H / ch);
+  const fittedW = cw * scale, fittedH = ch * scale;
+  const offsetX = (EXPORT_W - fittedW) / 2, offsetY = (EXPORT_H - fittedH) / 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
+    + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
+    + `<g transform="translate(${offsetX.toFixed(2)},${offsetY.toFixed(2)}) scale(${scale.toFixed(6)})">${inner}</g>`
+    + `</svg>`;
+  return { svg, width: EXPORT_W, height: EXPORT_H };
 }
+// Bord long de la carte Leaflet hors-écran (résolution de rasterisation des
+// tuiles avant l'ajustement final à EXPORT_W×EXPORT_H ci-dessus) : distinct
+// du format de sortie fixe, sert seulement à choisir une résolution de départ
+// raisonnable indépendamment de l'aspect du territoire.
+const EXPORT_LONG_EDGE = 2000;
 const TITLE_FONT_SIZE = 26, TITLE_PAD_X = 20, TITLE_MAX_LINES = 2;
 function wrapTitleLines(titleTxt, maxChars) {
   const words = String(titleTxt).split(/\s+/);
@@ -2068,6 +2077,13 @@ function serializeCurvesSVG() {
   const src = document.getElementById('curves-svg');
   const vb = (src.getAttribute('viewBox') || '0 0 800 500').split(/\s+/).map(Number);
   const W = vb[2], H = vb[3];
+  // Étiquettes de valeur par point (cf. renderCurveValueLabels) : masquées
+  // par défaut, affichées seulement au survol — sans intérêt dans une image
+  // statique exportée, retirées explicitement plutôt que de dépendre des
+  // règles de visibilité CSS de la page (non reprises dans CURVE_EXPORT_CSS).
+  const srcClone = src.cloneNode(true);
+  srcClone.querySelectorAll('.c-label-bg, .c-label-text').forEach(el => el.remove());
+  const srcInnerHTML = srcClone.innerHTML;
   const titleTxt = escXml(currentTitleText());
   const codes = legendOrder();
   const foc = focusCodes.size > 0;
@@ -2106,7 +2122,7 @@ function serializeCurvesSVG() {
   const inner = `<style>${CURVE_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
     + banner.svg
-    + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + src.innerHTML + leg + `</g>`;
+    + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + srcInnerHTML + leg + `</g>`;
   return wrapExportSVG(inner, totalW, totalH);
 }
 const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
@@ -2220,7 +2236,13 @@ function heatmapToSVG() {
     if (cell.classList.contains('previsions') || cell.classList.contains('prev')) {
       parts.push(`<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="url(#expPrev)"/>`);
     }
-    const lines = (cell.innerText || cell.textContent || '').split('\n').map(s => s.trim()).filter(Boolean);
+    // Le triangle de tri (▲▼▽) des entêtes de colonnes (cf. makeHeader) est
+    // un indicateur d'interaction propre à l'affichage web, sans sens dans
+    // une image exportée : exclu du texte des cellules.
+    const sortTri = cell.querySelector('.sort-tri');
+    const rawText = cell.innerText || cell.textContent || '';
+    const cellText = sortTri ? rawText.replace(sortTri.textContent, '') : rawText;
+    const lines = cellText.split('\n').map(s => s.trim()).filter(Boolean);
     if (lines.length) {
       const color = cs.color || '#222', fw = cs.fontWeight || '400';
       const fs = parseFloat(cs.fontSize) || 13;
