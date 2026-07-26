@@ -689,7 +689,7 @@ function drawSchoolCompareChart(svgEl, data) {
   const { years, school100, area100, pct, fp, schoolVals, areaVals, cibleEpci100, tendanceEcole100, areaLabel } = data;
   const W = 420, H = 190;
   svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const mL = 34, mR = 44, mT = 20, mB = 16;
+  const mL = 46, mR = 44, mT = 20, mB = 16;
   const plotW = W - mL - mR, plotH = H - mT - mB;
   const n = years.length;
   const x = i => mL + (n === 1 ? plotW / 2 : i * plotW / (n - 1));
@@ -759,21 +759,29 @@ function drawSchoolCompareChart(svgEl, data) {
     const t = el('text', { class: 'sc-xtick', x: x(i), y: mT + plotH + 12, 'text-anchor': 'middle' }); t.textContent = r; svgEl.appendChild(t);
   });
 
-  // Titre de l'axe Y (indice base 100), texte vertical
+  // Titre de l'axe Y (indice base 100), texte vertical. Pivot décalé de la
+  // bordure (x=12, pas 9) : le texte pivoté déborde du point de pivot d'à
+  // peu près la moitié de sa hauteur de police de part et d'autre — trop
+  // près du bord, il sort du viewBox même sur un libellé court.
   const yTitle = el('text', {
-    class: 'sc-ytitle', x: 9, y: mT + plotH / 2,
-    'text-anchor': 'middle', transform: `rotate(-90, 9, ${mT + plotH / 2})`,
+    class: 'sc-ytitle', x: 13, y: mT + plotH / 2,
+    'text-anchor': 'middle', transform: `rotate(-90, 13, ${mT + plotH / 2})`,
   });
   yTitle.textContent = 'Base 100';
   svgEl.appendChild(yTitle);
 
   // Titre de l'axe secondaire (droite) : échelle des barres "part école"
-  const rTitleX = W - 8;
+  const rTitleX = W - 13;
   const rTitle = el('text', {
     class: 'sc-ytitle', x: rTitleX, y: mT + plotH / 2,
     'text-anchor': 'middle', transform: `rotate(90, ${rTitleX}, ${mT + plotH / 2})`,
   });
-  rTitle.textContent = areaLabel === 'EPCI' ? "Part école dans l'EPCI (%)" : 'Part école dans la circonscription (%)';
+  // Texte volontairement court ("Part école (%)", sans répéter "dans
+  // l'EPCI"/"dans la circonscription" — déjà dans le titre du graphique) :
+  // en texte pivoté à 90°, sa longueur devient l'extension verticale autour
+  // du point de pivot, qui doit tenir dans plotH sous peine d'être rognée en
+  // haut/bas du chart pour les libellés de zone longs.
+  rTitle.textContent = 'Part école (%)';
   svgEl.appendChild(rTitle);
 
   if (labelBoundaryX != null) {
@@ -1947,20 +1955,68 @@ function applySwatchColors(container) {
 function currentTitleText() {
   return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
 }
-const EXPORT_W = 1980, EXPORT_H = 1200;
+// Dimensions d'export dérivées du contenu (cw × ch), plutôt qu'un cadre fixe
+// dans lequel le contenu était mis à l'échelle puis lettrboxé (grandes marges
+// mortes dès que l'aspect du contenu s'écartait de celui du cadre — un
+// graphique école étroit et haut, un tableau très large, etc. ne
+// correspondent jamais au même ratio). Le bord long vise EXPORT_LONG_EDGE,
+// l'autre en déduit sa taille : l'image finale a exactement le ratio du
+// contenu, sans marge morte ni recadrage.
+const EXPORT_LONG_EDGE = 2000;
 function wrapExportSVG(inner, cw, ch) {
-  const sc = Math.min(EXPORT_W/cw, EXPORT_H/ch);
-  const tx = (EXPORT_W-cw*sc)/2, ty = (EXPORT_H-ch*sc)/2;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
-    + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
-    + `<g transform="translate(${tx.toFixed(1)},${ty.toFixed(1)}) scale(${sc.toFixed(4)})">${inner}</g></svg>`;
+  const scale = EXPORT_LONG_EDGE / Math.max(cw, ch);
+  const width = Math.round(cw * scale), height = Math.round(ch * scale);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${cw} ${ch}">`
+    + `<rect width="${cw}" height="${ch}" fill="#ffffff"/>${inner}</svg>`;
+  return { svg, width, height };
 }
-function exportTitleSVG(titleTxt) {
-  const titleW = Math.ceil(String(titleTxt).length * 9);
-  const pad = 7, tx = 12, ty = 22;
-  return `<rect x="${tx-pad}" y="2" width="${titleW+pad*2}" height="26" fill="white" stroke="#000" stroke-width="0.8"/>`
-    + `<text x="${tx}" y="${ty}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:16px;fill:#2d2d2d">${escXml(titleTxt)}</text>`;
+const TITLE_FONT_SIZE = 26, TITLE_PAD_X = 20, TITLE_MAX_LINES = 2;
+function wrapTitleLines(titleTxt, maxChars) {
+  const words = String(titleTxt).split(/\s+/);
+  const lines = []; let cur = '';
+  for (const w of words) { const test = cur ? cur + ' ' + w : w; if (!cur || test.length <= maxChars) cur = test; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur);
+  return lines;
 }
+// Calcule à la fois les lignes du titre (au plus maxLines) et la largeur
+// minimale de bandeau qu'elles nécessitent, en une seule passe : élargit
+// progressivement le nombre de caractères par ligne jusqu'à respecter la
+// limite, pour éviter qu'un long titre sur un contenu étroit (ex. graphique
+// école) ne fasse exploser la hauteur du bandeau. exportTitleBanner et
+// titleBannerMinWidth appellent tous deux CETTE fonction avec les mêmes
+// paramètres plutôt que de recalculer les lignes chacun de son côté : un
+// double calcul (ex. re-déduire maxChars depuis totalW par simple division)
+// peut diverger du fait des arrondis et casser les mots différemment,
+// produisant des lignes plus longues que prévu qui débordent du bandeau.
+function computeTitleLines(titleTxt, maxLines = TITLE_MAX_LINES, fontSize = TITLE_FONT_SIZE, padX = TITLE_PAD_X) {
+  const charW = fontSize * 0.56;
+  let maxChars = 14, lines = wrapTitleLines(titleTxt, maxChars);
+  while (lines.length > maxLines && maxChars < 200) { maxChars += 3; lines = wrapTitleLines(titleTxt, maxChars); }
+  if (lines.length > maxLines) { lines = [...lines.slice(0, maxLines - 1), lines.slice(maxLines - 1).join(' ')]; }
+  const width = Math.ceil(Math.max(...lines.map(l => l.length * charW))) + padX * 2 + 8;
+  return { lines, width };
+}
+function titleBannerMinWidth(titleTxt, maxLines = TITLE_MAX_LINES, fontSize = TITLE_FONT_SIZE, padX = TITLE_PAD_X) {
+  return computeTitleLines(titleTxt, maxLines, fontSize, padX).width;
+}
+// Bandeau titre partagé par les 3 exports (école / courbes / tableau) :
+// toujours 100% de la largeur du contenu (totalW), replié sur au plus
+// maxLines lignes (l'appelant doit avoir dimensionné totalW via
+// titleBannerMinWidth pour que ce plafond ne tronque rien d'utile). Retourne
+// aussi sa hauteur pour que l'appelant réserve la place (+ un petit espace)
+// avant son propre contenu.
+function exportTitleBanner(titleTxt, totalW, maxLines = TITLE_MAX_LINES) {
+  const fontSize = TITLE_FONT_SIZE, padX = TITLE_PAD_X, padY = 14, lineH = Math.round(fontSize * 1.3);
+  const { lines } = computeTitleLines(titleTxt, maxLines, fontSize, padX);
+  const height = padY * 2 + lines.length * lineH;
+  let svg = `<rect x="0" y="0" width="${totalW.toFixed(1)}" height="${height.toFixed(1)}" fill="#f6f6f6" stroke="#ddd" stroke-width="1"/>`;
+  lines.forEach((ln, i) => {
+    const ty = padY + fontSize * 0.85 + i * lineH;
+    svg += `<text x="${padX}" y="${ty.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:${fontSize}px;fill:#161616">${escXml(ln)}</text>`;
+  });
+  return { svg, height };
+}
+const EXPORT_GAP = 16; // espace entre le bandeau titre et le contenu
 const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-grid{stroke:#c6c6c6;stroke-width:1}.c-grid2{stroke:#e3e3e3;stroke-width:1}
 .c-axis{stroke:#888;stroke-width:1}.c-axtick{stroke:#888;stroke-width:1}
@@ -1969,48 +2025,60 @@ const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.08em}
 .c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}
 .c-label-text{font-size:11px;font-weight:700;fill:#fff}`;
+// Légende en ligne(s) sous le graphique (comme l'export école) plutôt qu'un
+// panneau latéral de largeur fixe : minimise son emprise et laisse le chart
+// utiliser toute la largeur disponible.
 function serializeCurvesSVG() {
   const cache = scaleCache[state.echelle];
   const src = document.getElementById('curves-svg');
   const vb = (src.getAttribute('viewBox') || '0 0 800 500').split(/\s+/).map(Number);
   const W = vb[2], H = vb[3];
   const titleTxt = escXml(currentTitleText());
-  const TH = 30;
   const codes = legendOrder();
   const foc = focusCodes.size > 0;
-  const LW = 230, padL = 12, lineH = 18, rowGap = 8, topY = 36;
-  const availChars = Math.max(6, Math.floor((LW - 2*padL - 26) / 7.8));
-  const wrap = t => {
-    const words = String(t).split(/\s+/); const lines = []; let cur = '';
-    for (const w of words) { const test = cur ? cur+' '+w : w; if (test.length <= availChars) cur = test; else { if (cur) lines.push(cur); cur = w; } }
-    if (cur) lines.push(cur);
-    return lines.length ? lines : [''];
-  };
-  let ly = topY;
-  let leg = `<text x="${W+padL}" y="24" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:13px;letter-spacing:0.5px;fill:#888">ÉVOLUTION PAR ${state.echelle==='epci'?'EPCI':'CIRCONSCRIPTION'}</text>`;
+
+  const rowGap = 18, itemGap = 26, swatchW = 22, swatchGap = 8, lineH = 22, itemCharW = 7.6;
+  const rows = [];
+  let row = [], rowW = 0;
   for (const c of codes) {
-    const lines = wrap(cache.model.NOM_BY_CODE[c] || c);
-    const op = (foc && !focusCodes.has(c)) ? ' opacity="0.4"' : '';
-    leg += `<g${op}><rect x="${W+padL}" y="${(ly+lineH-12).toFixed(1)}" width="20" height="4.5" rx="2" fill="${colorByCode(c)}"/>`;
-    lines.forEach((ln,j) => { leg += `<text x="${W+padL+26}" y="${(ly+lineH*(j+1)).toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;fill:#333">${escXml(ln)}</text>`; });
-    leg += `</g>`;
-    ly += lines.length*lineH + rowGap;
+    const label = cache.model.NOM_BY_CODE[c] || c;
+    const itemW = swatchW + swatchGap + String(label).length * itemCharW;
+    const addGap = row.length ? itemGap : 0;
+    if (row.length && rowW + addGap + itemW > W) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
+    row.push({ label, color: colorByCode(c), dim: foc && !focusCodes.has(c), w: itemW });
+    rowW += (row.length > 1 ? itemGap : 0) + itemW;
   }
-  const legendH = ly + 8;
-  const contentH = Math.max(H, legendH);
-  const totalW = W + LW, totalH = TH + contentH;
-  const legPanel = `<rect x="${W}" y="0" width="${LW}" height="${contentH}" fill="#fafafa" stroke="#e0e0e0" stroke-width="1"/>` + leg;
+  if (row.length) rows.push({ items: row, w: rowW });
+
+  let leg = '', ly = H + rowGap;
+  for (const r of rows) {
+    let lx = (W - r.w) / 2;
+    for (const it of r.items) {
+      const op = it.dim ? ' opacity="0.4"' : '';
+      leg += `<g${op}><rect x="${lx.toFixed(1)}" y="${(ly-14).toFixed(1)}" width="20" height="4.5" rx="2" fill="${it.color}"/>`
+        + `<text x="${(lx+swatchW+swatchGap-2).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;fill:#333">${escXml(it.label)}</text></g>`;
+      lx += it.w + itemGap;
+    }
+    ly += lineH;
+  }
+  const legendH = rows.length ? (ly - H + 6) : 0;
+
+  const totalW = Math.max(W, titleBannerMinWidth(titleTxt));
+  const chartX = (totalW - W) / 2;
+  const banner = exportTitleBanner(titleTxt, totalW);
+  const contentY = banner.height + EXPORT_GAP;
+  const totalH = contentY + H + legendH;
   const inner = `<style>${CURVE_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
-    + `<g transform="translate(0,${TH})">` + src.innerHTML + legPanel + `</g>`
-    + exportTitleSVG(titleTxt);
+    + banner.svg
+    + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + src.innerHTML + leg + `</g>`;
   return wrapExportSVG(inner, totalW, totalH);
 }
 const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .sc-grid{stroke:#e6e6e6;stroke-width:1}.sc-axis{stroke:#999;stroke-width:1}
 .sc-ref{stroke:#aaa;stroke-width:1;stroke-dasharray:3 3}
 .sc-tick{font-size:15px;fill:#777}.sc-tick2{font-size:14px;fill:#b8860b}
-.sc-xtick{font-size:15px;fill:#555}
+.sc-xtick{font-size:13px;fill:#555}
 .sc-ytitle{font-size:14px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;fill:#777}
 .sc-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}
 .sc-line{fill:none;stroke-width:2.6}.sc-trend{fill:none;stroke-width:2;stroke-dasharray:5 3}
@@ -2018,13 +2086,11 @@ const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif
 // Export du graphique de comparaison base 100 (volet école) : redessine le
 // chart dans un <svg> détaché (même viewBox fixe que l'affichage), puis
 // reconstitue une légende en SVG (le HTML de #info-school-chart-legend
-// n'est pas exportable tel quel). Titre et légende sont enroulés (wrap) pour
-// tenir dans la largeur naturelle du chart (W) plutôt que d'agrandir le
-// canevas total : comme wrapExportSVG applique UNE seule échelle uniforme à
-// tout l'ensemble, tout pixel de largeur ajouté autour du chart pour loger un
-// titre/une légende plus larges se traduit par une marge morte qui rétrécit
-// d'autant l'échelle finale — donc le chart lui-même. En gardant totalW == W
-// dans le cas courant, le chart occupe toute la largeur du canevas d'export.
+// n'est pas exportable tel quel). Légende enroulée en ligne(s) dans la
+// largeur du chart (W) plutôt que d'agrandir le canevas total : les
+// dimensions d'export suivent désormais exactement le contenu (cf.
+// wrapExportSVG), donc élargir totalW au-delà du nécessaire n'a plus l'effet
+// pervers d'avant (rétrécir le chart par lettrboxing) mais reste inutile.
 function serializeSchoolCompareSVG() {
   if (!schoolCompareData || schoolCompareData.error) return null;
   const data = schoolCompareData;
@@ -2044,25 +2110,6 @@ function serializeSchoolCompareSVG() {
     { label: 'Delta projections', color: 'rgba(100,150,230,0.5)', swatch: 'box' },
   ];
 
-  // Titre : sur 1 ligne s'il tient, sinon replié sur 2 lignes max, dans la
-  // largeur du chart (les mots ne sont jamais coupés).
-  const titleCharW = 9, titlePad = 7, titleTx = 12, titleLineH = 21;
-  const titleMaxChars = Math.max(10, Math.floor((W - (titleTx - titlePad) - titlePad * 2) / titleCharW));
-  const wrapWords = (t, maxChars) => {
-    const words = String(t).split(/\s+/); const lines = []; let cur = '';
-    for (const w of words) { const test = cur ? cur + ' ' + w : w; if (!cur || test.length <= maxChars) cur = test; else { lines.push(cur); cur = w; } }
-    if (cur) lines.push(cur);
-    return lines;
-  };
-  let titleLines = wrapWords(titleTxt, titleMaxChars);
-  if (titleLines.length > 2) titleLines = [titleLines[0], titleLines.slice(1).join(' ')];
-  const titleWidestW = Math.max(...titleLines.map(l => l.length * titleCharW)) + titlePad * 2 + (titleTx - titlePad);
-  const TH = titleLines.length * titleLineH + 10;
-  let titleSvg = `<rect x="${titleTx - titlePad}" y="2" width="${(titleWidestW - (titleTx-titlePad)).toFixed(1)}" height="${(TH - 4).toFixed(1)}" fill="white" stroke="#000" stroke-width="0.8"/>`;
-  titleLines.forEach((ln, i) => {
-    titleSvg += `<text x="${titleTx}" y="${(18 + i * titleLineH).toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:16px;fill:#2d2d2d">${escXml(ln)}</text>`;
-  });
-
   // Légende : enroulée en ligne(s) dans la largeur du chart.
   const rowGap = 20, itemGap = 22, swatchW = 20, swatchGap = 6, lineH = 20, itemCharW = 6.6;
   const rows = [];
@@ -2075,12 +2122,10 @@ function serializeSchoolCompareSVG() {
     rowW += (row.length > 1 ? itemGap : 0) + itemW;
   }
   if (row.length) rows.push({ items: row, w: rowW });
-  const legendWidestW = rows.length ? Math.max(...rows.map(r => r.w)) : 0;
 
-  const totalW = Math.max(W, titleWidestW, legendWidestW);
   let leg = '', ly = H + rowGap;
   for (const r of rows) {
-    let lx = (totalW - r.w) / 2;
+    let lx = (W - r.w) / 2;
     for (const it of r.items) {
       if (it.swatch === 'line') leg += `<rect x="${lx.toFixed(1)}" y="${(ly-5).toFixed(1)}" width="${swatchW}" height="3" rx="1.5" fill="${it.color}"/>`;
       else if (it.swatch === 'dash') leg += `<line x1="${lx.toFixed(1)}" y1="${(ly-3.5).toFixed(1)}" x2="${(lx+swatchW).toFixed(1)}" y2="${(ly-3.5).toFixed(1)}" stroke="${it.color}" stroke-width="2" stroke-dasharray="4 3"/>`;
@@ -2090,25 +2135,28 @@ function serializeSchoolCompareSVG() {
     }
     ly += lineH;
   }
-  const legendH = ly - H + 6;
-  const totalH = TH + H + legendH;
+  const legendH = rows.length ? (ly - H + 6) : 0;
+
+  const totalW = Math.max(W, titleBannerMinWidth(titleTxt));
   const chartX = (totalW - W) / 2;
+  const banner = exportTitleBanner(titleTxt, totalW);
+  const contentY = banner.height + EXPORT_GAP;
+  const totalH = contentY + H + legendH;
   const inner = `<style>${SCHOOL_CHART_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
-    + `<g transform="translate(${chartX.toFixed(1)},${TH})">` + tmp.innerHTML + `</g>`
-    + `<g transform="translate(0,${TH})">` + leg + `</g>`
-    + titleSvg;
+    + banner.svg
+    + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + tmp.innerHTML + leg + `</g>`;
   return wrapExportSVG(inner, totalW, totalH);
 }
 async function exportSchoolCompareChart(format) {
   try {
-    const svgString = serializeSchoolCompareSVG();
-    if (!svgString) { alert("Aucun graphique à exporter."); return; }
+    const result = serializeSchoolCompareSVG();
+    if (!result) { alert("Aucun graphique à exporter."); return; }
     const filename = `comparaison_base100_${new Date().toISOString().slice(0,10)}.${format}`;
     if (format === 'svg') {
-      triggerDownload(filename, new Blob([svgString], { type: 'image/svg+xml' }));
+      triggerDownload(filename, new Blob([result.svg], { type: 'image/svg+xml' }));
     } else {
-      const blob = await svgToPngBlob(svgString, EXPORT_W, EXPORT_H);
+      const blob = await svgToPngBlob(result.svg, result.width, result.height);
       triggerDownload(filename, blob);
     }
   } catch (err) {
@@ -2120,16 +2168,14 @@ function heatmapToSVG() {
   const grid = document.getElementById('heat-grid');
   const cells = [...grid.children];
   const gb = grid.getBoundingClientRect();
-  const OY = 30;
-  const W = Math.ceil(grid.scrollWidth), H = Math.ceil(grid.scrollHeight) + OY;
+  const W = Math.ceil(grid.scrollWidth), H = Math.ceil(grid.scrollHeight);
   const parts = [
     `<defs><pattern id="expPrev" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">`
       + `<rect width="3" height="9" fill="#ffaa1e" fill-opacity="0.18"/></pattern></defs>`,
-    `<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`,
   ];
   for (const cell of cells) {
     const r = cell.getBoundingClientRect();
-    const cx = r.left - gb.left + grid.scrollLeft, cy = r.top - gb.top + grid.scrollTop + OY;
+    const cx = r.left - gb.left + grid.scrollLeft, cy = r.top - gb.top + grid.scrollTop;
     const w = r.width, h = r.height;
     const cs = getComputedStyle(cell);
     const bg = cs.backgroundColor;
@@ -2153,8 +2199,16 @@ function heatmapToSVG() {
       }
     }
   }
-  const inner = parts.join('') + exportTitleSVG(escXml(currentTitleText()));
-  return wrapExportSVG(inner, W, H);
+  const titleTxt = escXml(currentTitleText());
+  const totalW = Math.max(W, titleBannerMinWidth(titleTxt));
+  const chartX = (totalW - W) / 2;
+  const banner = exportTitleBanner(titleTxt, totalW);
+  const contentY = banner.height + EXPORT_GAP;
+  const totalH = contentY + H;
+  const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
+    + banner.svg
+    + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + parts.join('') + `</g>`;
+  return wrapExportSVG(inner, totalW, totalH);
 }
 function svgToPngBlob(svgString, width, height) {
   return new Promise((resolve, reject) => {
@@ -2495,11 +2549,11 @@ document.getElementById('sel-export').addEventListener('change', async e => {
       alert("L'export de la vue Carte n'est pas encore disponible.");
       return;
     }
-    const svgString = state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
+    const result = state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
     if (format === 'svg') {
-      triggerDownload(exportName('svg'), new Blob([svgString], { type: 'image/svg+xml' }));
+      triggerDownload(exportName('svg'), new Blob([result.svg], { type: 'image/svg+xml' }));
     } else if (format === 'png') {
-      const blob = await svgToPngBlob(svgString, EXPORT_W, EXPORT_H);
+      const blob = await svgToPngBlob(result.svg, result.width, result.height);
       triggerDownload(exportName('png'), blob);
     }
   } catch (err) {
