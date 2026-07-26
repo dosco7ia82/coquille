@@ -558,7 +558,9 @@ async function showFeatureSchoolsList(feature) {
   let model;
   try { model = await ensureSchoolData(); }
   catch (err) { console.error('[dataviz] Erreur chargement des écoles :', err); el.innerHTML = ''; el.hidden = true; return; }
-  const inside = model.points.filter(p => pointInPolygonGeom([p.lng, p.lat], feature.geometry));
+  const cache = scaleCache[state.echelle];
+  const code = String(feature.properties[cache.codeProp]);
+  const inside = model.points.filter(p => schoolAreaCode(p, state.echelle) === code);
   if (!inside.length) { el.innerHTML = '<p class="fsl-empty">Aucune école dans cette zone.</p>'; return; }
   const byCommune = {};
   for (const s of inside) {
@@ -601,19 +603,28 @@ function pointInPolygonGeom(pt, geom) {
     return true;
   });
 }
-function findContainingFeature(lng, lat) {
-  const cache = scaleCache[state.echelle];
+function findContainingFeature(lng, lat, cache = scaleCache[state.echelle]) {
   if (!cache.geojson) return null;
   return cache.geojson.features.find(f => pointInPolygonGeom([lng, lat], f.geometry)) || null;
 }
+// Code EPCI/circonscription d'une école pour une échelle donnée : priorité
+// aux colonnes Circo_UAI/EPCI_code de Projections_Scenarios (jointes côté
+// Grist aux tables Corresp_EPCI/Corresp_Circos, donc fiables même près d'une
+// frontière) ; repli sur le test géométrique point-dans-polygone seulement
+// si la colonne est absente pour cette école.
+function schoolAreaCode(school, echelle) {
+  const direct = echelle === 'epci' ? school.epciCode : school.circoUai;
+  if (direct) return direct;
+  const cache = scaleCache[echelle];
+  const feature = findContainingFeature(school.lng, school.lat, cache);
+  return feature ? String(feature.properties[cache.codeProp]) : null;
+}
 function showSchoolInfo(school) {
   clearFeatureSchoolsList();
-  const feature = findContainingFeature(school.lng, school.lat);
-  let code = null;
-  if (feature) {
-    const cache = scaleCache[state.echelle];
-    code = String(feature.properties[cache.codeProp]);
-    const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+  const cache = scaleCache[state.echelle];
+  const code = schoolAreaCode(school, state.echelle);
+  if (code) {
+    const nom = cache.model.NOM_BY_CODE[code] || (state.echelle === 'circo' ? school.circoNom : '') || code;
     const label = state.echelle === 'circo' ? `Circonscription : ${nom}` : nom;
     document.getElementById('info-feature-name').textContent = label;
   }
@@ -972,6 +983,14 @@ function buildSchoolModel(records) {
   const colScenario = find(/scenario/i);
   const colRentree = find(/rent/i);
   const colEffectif = find(/effectif|eleve|total/i);
+  // Rattachement EPCI/circonscription : colonnes ajoutées à Projections_Scenarios
+  // (formules Grist qui vont chercher dans Corresp_EPCI / Corresp_Circos), à
+  // privilégier sur le test géométrique point-dans-polygone (findContainingFeature)
+  // — plus fiable près d'une frontière ou si les coordonnées de l'école sont
+  // légèrement fausses.
+  const colCircoNom = keys.find(k => /circo/i.test(k) && /nom/i.test(k));
+  const colCircoUai = keys.find(k => /circo/i.test(k) && /uai/i.test(k));
+  const colEpciCode = keys.find(k => /epci/i.test(k) && /code/i.test(k));
 
   // Trois formats possibles, détectés dans cet ordre : "large" (une colonne
   // par rentrée RS19..RS30), "dépivoté à scénarios" (Projections_Scenarios :
@@ -987,7 +1006,7 @@ function buildSchoolModel(records) {
   const isScenarioFormat = !isWide && !!colScenario && !!colRentree && !!colEffectif;
   const format = isWide ? 'large (1 colonne par rentrée)' : isScenarioFormat ? 'dépivoté à scénarios (Projections_Scenarios)' : 'dépivoté simple (1 ligne par rentrée)';
   console.debug('[dataviz] format écoles détecté :', format,
-    { colUai, colUaiRpi, colX, colY, colSigle, colDenomination, colCommune, colType, colScenario, colRentree, colEffectif, rsKeyMap });
+    { colUai, colUaiRpi, colX, colY, colSigle, colDenomination, colCommune, colType, colScenario, colRentree, colEffectif, colCircoNom, colCircoUai, colEpciCode, rsKeyMap });
 
   const makeSchool = (uai, lng, lat, row) => ({
     uai, lng, lat,
@@ -996,6 +1015,9 @@ function buildSchoolModel(records) {
     commune: colCommune ? row[colCommune] : '',
     type: colType ? row[colType] : null,
     uaiRpi: colUaiRpi ? String(row[colUaiRpi] ?? '').trim() : '',
+    circoNom: colCircoNom ? String(row[colCircoNom] ?? '').trim() : '',
+    circoUai: colCircoUai ? String(row[colCircoUai] ?? '').trim() : '',
+    epciCode: colEpciCode ? String(row[colEpciCode] ?? '').trim() : '',
     years: {}, cibleEpci: {}, tendanceEcole: {},
   });
   const byUai = {};
@@ -1446,18 +1468,31 @@ function buildTimeline() {
   zc.innerHTML = '<span class="tl-zone-label">Constat</span>'; tlZones.appendChild(zc);
   const zp = document.createElement('div'); zp.className='tl-zone previsions'; zp.style.flex=nPrev;
   zp.innerHTML = '<span class="tl-zone-label">Prévisions</span>'; tlZones.appendChild(zp);
+  // selectRentree() reconstruit entièrement la frise (tlRail.innerHTML vidé
+  // par buildTimeline), donc l'élément DOM cliqué/focus est détruit à chaque
+  // sélection : on refocalise explicitement le nouvel item actif après coup
+  // pour que les flèches gauche/droite restent utilisables d'une pression à
+  // l'autre sans repasser par un clic.
+  const selectRentree = rr => {
+    if (schoolsModeBlocksControls()) return;
+    state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(rr);
+    buildTimeline();
+    if (!schoolsModeActive && geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
+    updateTitle();
+    syncUrlFromState();
+    const active = tlRail.querySelector('.tl-item.active');
+    if (active) active.focus();
+  };
   rentrees.forEach((r,i) => {
     const isCumul = r === 'CUMUL';
     const item = document.createElement('div');
     item.className = 'tl-item' + (isCumul?' cumul':'') + (r===currentRentree()?' active':'');
+    item.tabIndex = 0;
     item.innerHTML = `<span class="tl-label">${isCumul?'Cumul<br>RS26–RS30':r}</span><div class="tl-dot"></div>`;
-    item.addEventListener('click', () => {
-      if (schoolsModeBlocksControls()) return;
-      state.rentreeIdx = cache.model.RENTREES_DISPO.indexOf(r);
-      buildTimeline();
-      if (!schoolsModeActive && geojsonLayer) { geojsonLayer.setStyle(styleFeature); clearLabels(); addLabels(); updateLegend(); }
-      updateTitle();
-      syncUrlFromState();
+    item.addEventListener('click', () => selectRentree(r));
+    item.addEventListener('keydown', ev => {
+      if (ev.key === 'ArrowRight' && i < rentrees.length - 1) { ev.preventDefault(); selectRentree(rentrees[i+1]); }
+      else if (ev.key === 'ArrowLeft' && i > 0) { ev.preventDefault(); selectRentree(rentrees[i-1]); }
     });
     tlRail.appendChild(item);
   });
@@ -2210,6 +2245,249 @@ function heatmapToSVG() {
     + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">` + parts.join('') + `</g>`;
   return wrapExportSVG(inner, totalW, totalH);
 }
+/* ── Export de la vue Carte (PNG / SVG) ──
+   Reprend le principe du widget de référence (carte Leaflet hors-écran,
+   fitBounds sur l'emprise des polygones, tuiles CARTO) mais avec les
+   dimensions dérivées du contenu (pas de cadre fixe 1980×1200) et le bandeau
+   titre + légende minimisée communs aux 3 autres vues, plutôt qu'un titre et
+   une légende surimposés à la carte elle-même. PNG intègre le fond de carte
+   (tuiles rasterisées) ; SVG reste vectoriel (polygones seuls, sans fond de
+   carte — une mosaïque de tuiles en base64 serait impraticable dans un .svg
+   téléchargé), comme dans le widget de référence. */
+function mapExportLabelLines(nom) {
+  const short = String(nom)
+    .replace(/^Communauté de Communes\s*/i,'CC ').replace(/^Communauté d'Agglomération\s*/i,'CA ')
+    .replace(/^Communauté Urbaine\s*/i,'CU ').replace(/^Métropole\s*/i,'Met. ').trim();
+  const words = short.split(' '); const lines = []; let cur = '';
+  for (const w of words) { if (!cur) cur = w; else if ((cur+' '+w).length <= 18) cur += ' '+w; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur);
+  return lines;
+}
+// Ratio largeur/hauteur de l'emprise, en mètres Web Mercator (indépendant du
+// zoom) : sert uniquement à dimensionner le canevas d'export sans
+// lettrboxing, sur le même principe que les 3 autres vues (wrapExportSVG).
+function mapContentAspect(bounds) {
+  const p1 = L.CRS.EPSG3857.project(bounds.getNorthWest());
+  const p2 = L.CRS.EPSG3857.project(bounds.getSouthEast());
+  const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y);
+  return dx / Math.max(dy, 1);
+}
+async function buildMapExportInstance(mapW, mapH, bounds) {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:'+mapW+'px;height:'+mapH+'px;pointer-events:none;';
+  document.body.appendChild(holder);
+  const exportMap = L.map(holder, {
+    zoomControl: false, attributionControl: false, fadeAnimation: false,
+    zoomSnap: 0.05, zoomDelta: 0.05,
+  });
+  const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 19, crossOrigin: true,
+  }).addTo(exportMap);
+  const margin = 28;
+  exportMap.fitBounds(bounds, { padding: [margin, margin], animate: false });
+  await new Promise(resolve => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    tileLayer.once('load', finish);
+    setTimeout(finish, 2500); // filet de sécurité
+  });
+  await new Promise(r => setTimeout(r, 150)); // laisser le DOM se stabiliser
+  return { exportMap, holder };
+}
+// Récupère les tuiles déjà chargées dans la carte hors-écran (mêmes <img>
+// que Leaflet a positionnées) et les redessine dans un <canvas> à la même
+// position — nécessaire pour ensuite lire les pixels (toDataURL), ce qu'un
+// <img> affiché par Leaflet ne permet pas directement.
+async function rasterizeMapTiles(holder, mapW, mapH) {
+  const canvas = document.createElement('canvas');
+  canvas.width = mapW; canvas.height = mapH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, mapW, mapH);
+  const holderRect = holder.getBoundingClientRect();
+  const tileEls = holder.querySelectorAll('.leaflet-tile-pane img.leaflet-tile');
+  await Promise.all([...tileEls].map(img => new Promise(res => {
+    if (!img.src) return res();
+    const r = img.getBoundingClientRect();
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => { ctx.drawImage(i, r.left - holderRect.left, r.top - holderRect.top, r.width, r.height); res(); };
+    i.onerror = () => res();
+    i.src = img.src;
+  })));
+  return canvas;
+}
+function mapPolygonPathD(feature, latLng2px) {
+  const geom = feature.geometry;
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  let d = '';
+  for (const rings of polys) {
+    for (const ring of rings) {
+      const [x0, y0] = latLng2px(ring[0][1], ring[0][0]);
+      d += 'M' + x0.toFixed(1) + ',' + y0.toFixed(1);
+      for (let i = 1; i < ring.length; i++) { const [x, y] = latLng2px(ring[i][1], ring[i][0]); d += 'L' + x.toFixed(1) + ',' + y.toFixed(1); }
+      d += 'Z';
+    }
+  }
+  return d;
+}
+function buildMapPolygonsSVG(cache, latLng2px) {
+  let parts = '';
+  for (const feature of cache.geojson.features) {
+    const code = String(feature.properties[cache.codeProp]);
+    const fill = getColor(getVal(code));
+    parts += `<path d="${mapPolygonPathD(feature, latLng2px)}" fill="${fill}" stroke="#333" stroke-width="1.6" stroke-opacity="0.85"/>`;
+  }
+  return parts;
+}
+function drawMapPolygonsCanvas(ctx, cache, latLng2px) {
+  for (const feature of cache.geojson.features) {
+    const code = String(feature.properties[cache.codeProp]);
+    const fill = getColor(getVal(code));
+    const geom = feature.geometry;
+    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+    ctx.beginPath();
+    for (const rings of polys) for (const ring of rings) {
+      const [x0, y0] = latLng2px(ring[0][1], ring[0][0]); ctx.moveTo(x0, y0);
+      for (let i = 1; i < ring.length; i++) { const [x, y] = latLng2px(ring[i][1], ring[i][0]); ctx.lineTo(x, y); }
+      ctx.closePath();
+    }
+    ctx.fillStyle = fill; ctx.globalAlpha = 1; ctx.fill();
+    ctx.globalAlpha = 0.85; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+// Mêmes règles d'affichage que les étiquettes de la carte en direct
+// (addLabels) : nom seul si "Afficher les valeurs" est désactivé, valeur
+// principale + éventuellement seconde unité sinon.
+function mapLabelItems(feature, code, cache) {
+  const nom = cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+  const items = mapExportLabelLines(nom).map(l => ({ text: l, color: '#1a1a1a' }));
+  const delta = state.showValues ? getVal(code) : null;
+  if (delta != null) {
+    const col = delta > 0 ? '#1a6b2a' : delta < 0 ? '#a50026' : '#555';
+    items.push({ text: formatVal(delta), color: col });
+    if (state.showSecondUnit && state.type !== 'effectifs') {
+      const secondary = getSecondaryVal(code);
+      if (secondary != null) {
+        const col2 = secondary > 0 ? '#1a6b2a' : secondary < 0 ? '#a50026' : '#555';
+        items.push({ text: formatSecondaryVal(secondary), color: col2 });
+      }
+    }
+  }
+  return items;
+}
+function buildMapLabelsSVG(cache, latLng2px) {
+  let parts = '';
+  for (const feature of cache.geojson.features) {
+    const code = String(feature.properties[cache.codeProp]);
+    const center = featureCenter(feature);
+    const [cx, cy] = latLng2px(center[0], center[1]);
+    const items = mapLabelItems(feature, code, cache);
+    const lineH = 32, startY = cy - (items.length * lineH) / 2 + lineH / 2;
+    items.forEach((it, i) => {
+      parts += `<text x="${cx.toFixed(1)}" y="${(startY + i * lineH).toFixed(1)}" text-anchor="middle" `
+        + `font-family="Arial" font-size="26" font-weight="bold" `
+        + `stroke="rgba(255,255,255,0.92)" stroke-width="5" stroke-linejoin="round" paint-order="stroke" `
+        + `fill="${it.color}">${escXml(it.text)}</text>`;
+    });
+  }
+  return parts;
+}
+function drawMapLabelsCanvas(ctx, cache, latLng2px) {
+  ctx.textAlign = 'center';
+  for (const feature of cache.geojson.features) {
+    const code = String(feature.properties[cache.codeProp]);
+    const center = featureCenter(feature);
+    const [cx, cy] = latLng2px(center[0], center[1]);
+    const items = mapLabelItems(feature, code, cache);
+    const lineH = 32, startY = cy - (items.length * lineH) / 2 + lineH / 2;
+    items.forEach((it, i) => {
+      const ty = startY + i * lineH;
+      ctx.font = 'bold 26px Arial'; ctx.lineWidth = 5; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.strokeText(it.text, cx, ty);
+      ctx.fillStyle = it.color; ctx.fillText(it.text, cx, ty);
+    });
+  }
+}
+// Légende (mêmes ruptures/couleurs que #map-legend, cf. updateLegend) sous
+// forme de lignes centrées et enroulées dans la largeur disponible, comme
+// les 3 autres vues, plutôt que superposée dans une poche libre du
+// territoire (mécanisme de recherche géométrique du widget de référence,
+// plus complexe et plus fragile pour un gain visuel marginal).
+function buildMapLegendRows(totalW) {
+  const cache = scaleCache[state.echelle];
+  const key = activeBreakKey();
+  const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
+  if (!breaks || breaks.length < 2 || !n) return { svg: '', height: 0 };
+  const items = [];
+  for (let i = n - 1; i >= 0; i--) items.push({ label: fmtLegendRange(breaks[i], breaks[i+1]), color: colors[i] });
+  const itemGap = 20, swatchW = 20, swatchH = 13, swatchGap = 6, lineH = 20, itemCharW = 6.8;
+  const rows = []; let row = [], rowW = 0;
+  for (const it of items) {
+    const itemW = swatchW + swatchGap + it.label.length * itemCharW;
+    const addGap = row.length ? itemGap : 0;
+    if (row.length && rowW + addGap + itemW > totalW) { rows.push({ items: row, w: rowW }); row = []; rowW = 0; }
+    row.push({ ...it, w: itemW });
+    rowW += (row.length > 1 ? itemGap : 0) + itemW;
+  }
+  if (row.length) rows.push({ items: row, w: rowW });
+  const titleTxt = escXml(legendTitle());
+  let leg = `<text x="${(totalW/2).toFixed(1)}" y="16" text-anchor="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;fill:#333">${titleTxt}</text>`;
+  let ly = 36;
+  for (const r of rows) {
+    let lx = (totalW - r.w) / 2;
+    for (const it of r.items) {
+      leg += `<rect x="${lx.toFixed(1)}" y="${(ly-swatchH+2).toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="2" fill="${it.color}" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
+      leg += `<text x="${(lx+swatchW+swatchGap).toFixed(1)}" y="${ly.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;fill:#333">${escXml(it.label)}</text>`;
+      lx += it.w + itemGap;
+    }
+    ly += lineH;
+  }
+  return { svg: leg, height: ly - lineH + 8 };
+}
+async function buildMapExportSVG(fmt) {
+  const cache = scaleCache[state.echelle];
+  if (!cache.geojson) throw new Error('Carte non chargée.');
+  const titleTxt = escXml(currentTitleText());
+
+  const groupedLayer = L.featureGroup(cache.geojson.features.map(f => L.geoJSON(f.geometry)));
+  const bounds = groupedLayer.getBounds();
+  const aspect = mapContentAspect(bounds);
+  let mapW, mapH;
+  if (aspect >= 1) { mapW = EXPORT_LONG_EDGE; mapH = Math.round(EXPORT_LONG_EDGE / aspect); }
+  else { mapH = EXPORT_LONG_EDGE; mapW = Math.round(EXPORT_LONG_EDGE * aspect); }
+
+  const { exportMap, holder } = await buildMapExportInstance(mapW, mapH, bounds);
+  try {
+    const latLng2px = (lat, lng) => { const pt = exportMap.latLngToContainerPoint([lat, lng]); return [pt.x, pt.y]; };
+
+    let mapInner;
+    if (fmt === 'png') {
+      const canvas = await rasterizeMapTiles(holder, mapW, mapH);
+      const ctx = canvas.getContext('2d');
+      drawMapPolygonsCanvas(ctx, cache, latLng2px);
+      drawMapLabelsCanvas(ctx, cache, latLng2px);
+      mapInner = `<image href="${canvas.toDataURL('image/png')}" x="0" y="0" width="${mapW}" height="${mapH}"/>`;
+    } else {
+      mapInner = `<rect width="${mapW}" height="${mapH}" fill="#f5f5f5"/>`
+        + buildMapPolygonsSVG(cache, latLng2px) + buildMapLabelsSVG(cache, latLng2px);
+    }
+
+    const totalW = Math.max(mapW, titleBannerMinWidth(titleTxt));
+    const chartX = (totalW - mapW) / 2;
+    const legend = buildMapLegendRows(totalW);
+    const banner = exportTitleBanner(titleTxt, totalW);
+    const contentY = banner.height + EXPORT_GAP;
+    const totalH = contentY + mapH + (legend.height ? 16 + legend.height : 0);
+    const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
+      + banner.svg
+      + `<g transform="translate(${chartX.toFixed(1)},${contentY.toFixed(1)})">${mapInner}</g>`
+      + (legend.svg ? `<g transform="translate(0,${(contentY + mapH + 16).toFixed(1)})">${legend.svg}</g>` : '');
+    return wrapExportSVG(inner, totalW, totalH);
+  } finally {
+    exportMap.remove();
+    holder.remove();
+  }
+}
 function svgToPngBlob(svgString, width, height) {
   return new Promise((resolve, reject) => {
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -2259,18 +2537,17 @@ function schoolYearColumns(model) {
   return RENTREES_ALL.filter(r => !RS_EXCLUDE_TIMELINE.has(r) && model.points.some(p => p.years[r] != null));
 }
 // Nom (pas code) de l'EPCI/circonscription contenant un point donné.
-function findAreaName(lng, lat, cache) {
-  if (lng == null || lat == null || !cache.geojson) return '';
-  const feature = cache.geojson.features.find(f => pointInPolygonGeom([lng, lat], f.geometry));
-  if (!feature) return '';
-  const code = String(feature.properties[cache.codeProp]);
-  return cache.model.NOM_BY_CODE[code] || feature.properties.circo || feature.properties.nom || code;
+function findAreaName(school, echelle) {
+  const code = schoolAreaCode(school, echelle);
+  if (!code) return '';
+  const cache = scaleCache[echelle];
+  return cache.model.NOM_BY_CODE[code] || (echelle === 'circo' ? school.circoNom : '') || code;
 }
-function buildSchoolAreaNames(model, circoCache, epciCache) {
+function buildSchoolAreaNames(model) {
   const circoName = new Map(), epciName = new Map();
   for (const s of model.points) {
-    circoName.set(s.uai, findAreaName(s.lng, s.lat, circoCache));
-    epciName.set(s.uai, findAreaName(s.lng, s.lat, epciCache));
+    circoName.set(s.uai, findAreaName(s, 'circo'));
+    epciName.set(s.uai, findAreaName(s, 'epci'));
   }
   return { circoName, epciName };
 }
@@ -2348,7 +2625,7 @@ async function exportAllDataXLSX() {
         XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), `${ech.label} (${ty.label})`);
       }
     }
-    const { circoName, epciName } = buildSchoolAreaNames(schoolModelData, scaleCache.circo, scaleCache.epci);
+    const { circoName, epciName } = buildSchoolAreaNames(schoolModelData);
     for (const ty of types) {
       const rows = buildSchoolSheetRows(ty.key, schoolModelData, circoName, epciName);
       XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), `Par école (${ty.label})`);
@@ -2538,6 +2815,10 @@ document.getElementById('sel-export').addEventListener('change', async e => {
   const format = e.target.value;
   e.target.selectedIndex = 0;
   if (!format) return;
+  // L'export carte (tuiles + reconstruction de la carte hors-écran) prend
+  // sensiblement plus de temps que les autres vues : le select est désactivé
+  // le temps de l'opération pour éviter un second déclenchement.
+  e.target.disabled = true;
   try {
     if (format === 'xlsx') {
       // L'export Excel est indépendant de la vue/échelle/unité affichées :
@@ -2545,11 +2826,12 @@ document.getElementById('sel-export').addEventListener('change', async e => {
       await exportAllDataXLSX();
       return;
     }
-    if (state.vue === 'carte') {
-      alert("L'export de la vue Carte n'est pas encore disponible.");
+    if (state.vue === 'carte' && schoolsModeActive) {
+      alert("L'export de la carte n'est pas disponible en mode écoles.");
       return;
     }
-    const result = state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
+    const result = state.vue === 'carte' ? await buildMapExportSVG(format)
+      : state.vue === 'courbes' ? serializeCurvesSVG() : heatmapToSVG();
     if (format === 'svg') {
       triggerDownload(exportName('svg'), new Blob([result.svg], { type: 'image/svg+xml' }));
     } else if (format === 'png') {
@@ -2559,6 +2841,8 @@ document.getElementById('sel-export').addEventListener('change', async e => {
   } catch (err) {
     alert('Export échoué : ' + err.message);
     console.error('[dataviz] Erreur export :', err);
+  } finally {
+    e.target.disabled = false;
   }
 });
 window.addEventListener('resize', () => {
