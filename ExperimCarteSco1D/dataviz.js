@@ -2015,7 +2015,6 @@ function wrapExportSVG(inner, cw, ch) {
 // du format de sortie fixe, sert seulement à choisir une résolution de départ
 // raisonnable indépendamment de l'aspect du territoire.
 const EXPORT_LONG_EDGE = 2000;
-const TITLE_FONT_SIZE_MAX = 22, TITLE_FONT_SIZE_MIN = 13, TITLE_PAD_X = 16;
 function wrapTitleLines(titleTxt, maxChars) {
   const words = String(titleTxt).split(/\s+/);
   const lines = []; let cur = '';
@@ -2023,43 +2022,34 @@ function wrapTitleLines(titleTxt, maxChars) {
   if (cur) lines.push(cur);
   return lines;
 }
-// Le contenu principal (courbe/tableau/carte/graphique) occupe toujours
-// 100% de la largeur (totalW fixé par l'appelant, jamais élargi pour le
-// titre) : c'est donc au titre de s'adapter à cette largeur, pas l'inverse.
-// On cherche la plus grande taille de police (entre TITLE_FONT_SIZE_MIN et
-// TITLE_FONT_SIZE_MAX) qui fait tenir le titre sur une seule ligne ; à
-// défaut, on retombe sur la police minimale, quel que soit le nombre de
-// lignes que ça prend (chaque ligne reste bornée à maxChars pour cette
-// taille, donc jamais de débordement horizontal, contrairement à un
-// remplissage forcé qui concatènerait les lignes en trop).
-function computeTitleLayout(titleTxt, totalW, padX = TITLE_PAD_X) {
-  for (let fs = TITLE_FONT_SIZE_MAX; fs >= TITLE_FONT_SIZE_MIN; fs--) {
-    const maxChars = Math.max(6, Math.floor((totalW - padX * 2) / (fs * 0.56)));
-    const lines = wrapTitleLines(titleTxt, maxChars);
-    if (lines.length <= 1) return { fontSize: fs, lines };
-  }
-  const fs = TITLE_FONT_SIZE_MIN;
-  const maxChars = Math.max(6, Math.floor((totalW - padX * 2) / (fs * 0.56)));
-  return { fontSize: fs, lines: wrapTitleLines(titleTxt, maxChars) };
-}
 // Bandeau titre partagé par les 4 exports (école / courbes / tableau /
-// carte) : toujours 100% de la largeur du contenu (totalW), fond blanc et
-// contour noir fin (comme le reste de la mise en page — cohérent avec le
-// fond blanc du canevas). Retourne aussi sa hauteur pour que l'appelant
-// réserve la place (+ un petit espace) avant son propre contenu.
+// carte) : rendu final IDENTIQUE quelle que soit la vue (calibré sur
+// l'export Tableau). Chaque export a sa propre largeur de contenu "totalW"
+// (420 pour le graphique école, ~700-900 pour courbes/tableau, ~2000 pour
+// la carte) avant d'être mis à l'échelle vers EXPORT_W=1980px de large (cf.
+// wrapExportSVG) : une même taille de police en unités de contenu ne rend
+// donc PAS à la même taille finale sur les 4 exports (22px de police
+// rendrait ≈104px de haut une fois l'école agrandie à 1980px de large,
+// contre ≈22px pour la carte). Toutes les dimensions du bandeau (police,
+// marges, contour) sont donc dérivées de totalW plutôt qu'en valeurs
+// absolues, pour un rendu final identique sur les 4 vues.
+const TITLE_FONT_TARGET_PX = 26, TITLE_PAD_X_TARGET_PX = 16, TITLE_PAD_Y_TARGET_PX = 11,
+      TITLE_STROKE_TARGET_PX = 2, TITLE_GAP_TARGET_PX = 14;
 function exportTitleBanner(titleTxt, totalW) {
-  const padX = TITLE_PAD_X, padY = 10;
-  const { fontSize, lines } = computeTitleLayout(titleTxt, totalW, padX);
-  const lineH = Math.round(fontSize * 1.3);
+  const scale = totalW / EXPORT_W;
+  const fontSize = TITLE_FONT_TARGET_PX * scale, padX = TITLE_PAD_X_TARGET_PX * scale,
+        padY = TITLE_PAD_Y_TARGET_PX * scale, strokeW = TITLE_STROKE_TARGET_PX * scale;
+  const maxChars = Math.max(6, Math.floor((totalW - padX * 2) / (fontSize * 0.56)));
+  const lines = wrapTitleLines(titleTxt, maxChars);
+  const lineH = fontSize * 1.3;
   const height = padY * 2 + lines.length * lineH;
-  let svg = `<rect x="0.5" y="0.5" width="${(totalW - 1).toFixed(1)}" height="${(height - 1).toFixed(1)}" fill="#ffffff" stroke="#000000" stroke-width="1"/>`;
+  let svg = `<rect x="${(strokeW/2).toFixed(2)}" y="${(strokeW/2).toFixed(2)}" width="${(totalW-strokeW).toFixed(1)}" height="${(height-strokeW).toFixed(1)}" fill="#ffffff" stroke="#000000" stroke-width="${strokeW.toFixed(2)}"/>`;
   lines.forEach((ln, i) => {
     const ty = padY + fontSize * 0.85 + i * lineH;
-    svg += `<text x="${padX}" y="${ty.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:${fontSize}px;fill:#161616">${escXml(ln)}</text>`;
+    svg += `<text x="${padX.toFixed(1)}" y="${ty.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:${fontSize.toFixed(2)}px;fill:#161616">${escXml(ln)}</text>`;
   });
-  return { svg, height };
+  return { svg, height, gap: TITLE_GAP_TARGET_PX * scale };
 }
-const EXPORT_GAP = 16; // espace entre le bandeau titre et le contenu
 const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-grid{stroke:#c6c6c6;stroke-width:1}.c-grid2{stroke:#e3e3e3;stroke-width:1}
 .c-axis{stroke:#888;stroke-width:1}.c-axtick{stroke:#888;stroke-width:1}
@@ -2115,7 +2105,7 @@ function serializeCurvesSVG() {
 
   const totalW = W;
   const banner = exportTitleBanner(titleTxt, totalW);
-  const contentY = banner.height + EXPORT_GAP;
+  const contentY = banner.height + banner.gap;
   const totalH = contentY + H + legendH;
   const inner = `<style>${CURVE_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
@@ -2203,7 +2193,7 @@ function serializeSchoolCompareSVG() {
 
   const totalW = W;
   const banner = exportTitleBanner(titleTxt, totalW);
-  const contentY = banner.height + EXPORT_GAP;
+  const contentY = banner.height + banner.gap;
   const totalH = contentY + H + legendH;
   const inner = `<style>${SCHOOL_CHART_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
@@ -2271,7 +2261,7 @@ function heatmapToSVG() {
   const titleTxt = escXml(currentTitleText());
   const totalW = W;
   const banner = exportTitleBanner(titleTxt, totalW);
-  const contentY = banner.height + EXPORT_GAP;
+  const contentY = banner.height + banner.gap;
   const totalH = contentY + H;
   const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
     + banner.svg
@@ -2498,7 +2488,7 @@ async function buildMapExportSVG(fmt) {
     const legendSVG = buildMapLegendOverlay(mapW, mapH);
     const totalW = mapW;
     const banner = exportTitleBanner(titleTxt, totalW);
-    const contentY = banner.height + EXPORT_GAP;
+    const contentY = banner.height + banner.gap;
     const totalH = contentY + mapH;
     const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
       + banner.svg
