@@ -106,7 +106,7 @@ button, select { font-family: inherit; }
 .seg-btn:hover { background: var(--background-alt-blue-france); }
 .seg-btn.active { background: var(--blue-france-main-525); color: #fff; }
 .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-#sidebar.nav-disabled { pointer-events: none; opacity: 0.45; filter: grayscale(0.4); }
+body.session-expired #header, body.session-expired #sidebar { display: none; }
 
 /* Sections Vue / Type de données : blocs carrés côte à côte */
 .seg.seg-icons {

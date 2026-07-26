@@ -2357,14 +2357,11 @@ function showSessionError(html) {
   el.style.display = 'flex';
   el.innerHTML = html;
 }
+// Session invalide/périmée : masque entièrement le bandeau titre et le volet
+// de navigation (pas seulement grisés) pour ne laisser que le message
+// d'erreur, centré en pleine page.
 function disableNav() {
-  const sidebar = document.getElementById('sidebar');
-  sidebar.classList.add('nav-disabled');
-  sidebar.setAttribute('aria-disabled', 'true');
-  sidebar.querySelectorAll('button, [role="button"]').forEach(el => {
-    el.setAttribute('tabindex', '-1');
-    if (el.tagName === 'BUTTON') el.disabled = true;
-  });
+  document.body.classList.add('session-expired');
 }
 
 /* ══════════════════════ ÉVÉNEMENTS UI ══════════════════════ */
