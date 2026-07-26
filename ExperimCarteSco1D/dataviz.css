@@ -262,7 +262,8 @@ body.session-expired #header, body.session-expired #sidebar { display: none; }
 .tl-zone.previsions .tl-zone-label { color: rgba(255,200,60,0.6); }
 #tl-rail { flex: 1; display: flex; align-items: flex-end; position: relative; z-index: 2; padding: 0 0.5rem 0.9rem; }
 #tl-rail::before { content: ''; position: absolute; bottom: 1.6rem; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.28); }
-.tl-item { flex: 1; display: flex; flex-direction: column; align-items: center; cursor: pointer; gap: 0.25rem; }
+.tl-item { flex: 1; display: flex; flex-direction: column; align-items: center; cursor: pointer; gap: 0.25rem; outline: none; border-radius: 0.3rem; }
+.tl-item:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,0.7); }
 .tl-label { font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.5); white-space: nowrap; }
 .tl-dot { width: 0.68rem; height: 0.68rem; border-radius: 50%; background: rgba(255,255,255,0.28); border: 2px solid rgba(255,255,255,0.4); transition: background .15s, transform .15s; }
 .tl-item:hover .tl-dot { background: rgba(255,255,255,0.6); transform: scale(1.2); }
