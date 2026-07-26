@@ -82,6 +82,10 @@ async function fetchGeojson(url) {
 const NEG_PALETTE = ['#ffffb2','#fdd49e','#fdbb84','#fc8d59','#ef6548','#d7301f','#b30000','#7f0000','#67000d'];
 const POS_PALETTE = ['#c7e9c0','#74c476','#238b45'];
 const COLORS_ABSOLU_DEF = ['#f7fbff','#deebf7','#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c'];
+// Palette dédiée à la heatmap du Tableau (unité Effectifs), reprise telle
+// quelle du widget d'origine (courbes_et_heatmap.html) : jaune -> rouge foncé,
+// distincte de la palette bleue utilisée pour les cartes choroplèthes.
+const COLORS_ABSOLU_HEAT_DEF = ['#fff7ec','#fee8c8','#fdd49e','#fdbb84','#fc8d59','#ef6548','#d7301f','#990000'];
 
 function buildRelatifColors(breaks) {
   const n = breaks.length - 1;
@@ -279,7 +283,13 @@ function buildModel(records, echelle) {
       model.BREAKS.effectifs = breaks;
       model.COLORS.effectifs = COLORS_ABSOLU_DEF.slice();
       model.N.effectifs = n;
-    } else { model.BREAKS.effectifs = []; model.COLORS.effectifs = []; model.N.effectifs = 0; }
+      model.BREAKS.effectifsHeat = breaks;
+      model.COLORS.effectifsHeat = COLORS_ABSOLU_HEAT_DEF.slice();
+      model.N.effectifsHeat = n;
+    } else {
+      model.BREAKS.effectifs = []; model.COLORS.effectifs = []; model.N.effectifs = 0;
+      model.BREAKS.effectifsHeat = []; model.COLORS.effectifsHeat = []; model.N.effectifsHeat = 0;
+    }
   }
   // Classes "pourcentage"
   {
@@ -748,13 +758,23 @@ function drawSchoolCompareChart(svgEl, data) {
     }
   }
 
+  // La graduation "100" (base de l'indice) doit toujours apparaître, en gras :
+  // dessinée à part, plutôt que de dépendre d'une coïncidence avec l'une des
+  // graduations également réparties ci-dessous (qui l'omettent si "100" ne
+  // tombe pas exactement sur l'un des pas). lo/hi englobent toujours 100 par
+  // construction (initialisés à 100 avant d'être élargis par les données).
   const steps = 3;
   for (let i = 0; i <= steps; i++) {
     const v = lo + (hi - lo) * i / steps, yy = y(v);
     svgEl.appendChild(el('line', { class: 'sc-grid', x1: mL, y1: yy, x2: mL + plotW, y2: yy }));
+    if (Math.round(v) === 100) continue;
     const t = el('text', { class: 'sc-tick', x: mL - 4, y: yy + 3, 'text-anchor': 'end' }); t.textContent = Math.round(v); svgEl.appendChild(t);
   }
-  if (100 >= lo && 100 <= hi) svgEl.appendChild(el('line', { class: 'sc-ref', x1: mL, y1: y(100), x2: mL + plotW, y2: y(100) }));
+  if (100 >= lo && 100 <= hi) {
+    const y100 = y(100);
+    svgEl.appendChild(el('line', { class: 'sc-ref', x1: mL, y1: y100, x2: mL + plotW, y2: y100 }));
+    const t100 = el('text', { class: 'sc-tick sc-tick-100', x: mL - 4, y: y100 + 3, 'text-anchor': 'end' }); t100.textContent = '100'; svgEl.appendChild(t100);
+  }
 
   // Axe secondaire (droite) : échelle des barres "part école/zone" en %
   const pctTicks = [0, pctAxisMax / 2, pctAxisMax];
@@ -1603,14 +1623,31 @@ function renderCurves() {
   svg.innerHTML = '';
   const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
   if (years.length === 0) return;
-
   const W = chart.clientWidth || 800, H = chart.clientHeight || 500;
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const codes = sortedCodes();
+  drawCurvesChart(svg, W, H, cache, years, codes, true);
+  buildCurvesLegend();
+  applyCurvesFocus();
+}
+// Dessine le graphique dans svgEl aux dimensions W×H fournies (pas
+// nécessairement celles de #curves-chart en direct) : réutilisé par l'export
+// (cf. serializeCurvesSVG) avec un ratio de référence indépendant de la
+// fenêtre du navigateur — le conteneur #curves-chart en direct est presque
+// toujours plus proche du carré que du format d'export 1980×1200 une fois
+// bandeau titre + légende ajoutés (vérifié : ratio < 1.65 sur tous les
+// viewports usuels), ce qui rognerait fortement le bas du graphique si on
+// réutilisait tel quel ses dimensions en direct avec une mise à l'échelle
+// uniquement par la largeur (cf. wrapExportSVG). withLabels contrôle les
+// étiquettes de valeur par point (survol uniquement en direct, jamais utiles
+// à l'export, qui les retirait de toute façon après coup).
+function drawCurvesChart(svgEl, W, H, cache, years, codes, withLabels) {
+  svgEl.innerHTML = '';
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const svg = svgEl;
   const mL = 64, mR = 64, mT = 34, mB = 34;
   const plotW = Math.max(10, W - mL - mR), plotH = Math.max(10, H - mT - mB);
   const n = years.length;
   const x = i => mL + (n === 1 ? plotW/2 : i * plotW / (n - 1));
-  const codes = sortedCodes();
 
   let lo = Infinity, hi = -Infinity;
   for (const c of codes) for (const r of years) {
@@ -1715,9 +1752,7 @@ function renderCurves() {
       labelPts.push({ x:p[0], y:p[1], r, val:p[3], color, code:c });
     }
   }
-  renderCurveValueLabels(svg, labelPts, W, H);
-  buildCurvesLegend();
-  applyCurvesFocus();
+  if (withLabels) renderCurveValueLabels(svg, labelPts, W, H);
 }
 // Étiquettes de valeur par point : fond semi-transparent coloré selon la
 // courbe, centrées au-dessus du point par défaut ; si ça chevauche un autre
@@ -1938,7 +1973,7 @@ function renderHeatmap() {
       cell.dataset.row = code;
       if (v == null) { cell.classList.add('h-empty'); cell.textContent = '·'; }
       else {
-        const bg = getColor(v, state.type);
+        const bg = getColor(v, state.type === 'effectifs' ? 'effectifsHeat' : state.type);
         cell.style.background = bg; cell.style.color = textColor(bg);
         cell.textContent = formatCellVal(v);
         cell.title = `${cache.model.NOM_BY_CODE[code]||code} — ${r} : ${formatVal(v)}`;
@@ -1995,28 +2030,30 @@ function currentTitleText() {
 }
 // Toutes les images exportées (PNG/SVG, les 4 vues) sortent au format fixe
 // 1980×1200px/96dpi. Le contenu (bandeau titre + contenu principal +
-// légende) est mis à l'échelle par contenance (letterboxing, sans
-// déformation ni recadrage) puis ancré en haut à gauche plutôt que centré :
-// quand le contenu est au moins aussi large que haut par rapport à
-// 1980:1200 (le cas courant, le contenu principal occupant toujours 100%
-// de sa propre largeur — cf. exportTitleBanner), la largeur utilise tout
-// l'espace et seul le bas du cadre reste blanc ; sinon (contenu
-// exceptionnellement plus haut que large), l'ancrage en haut à gauche évite
-// au moins de répartir la marge des deux côtés.
+// légende) est toujours mis à l'échelle par la largeur (jamais par
+// contenance) puis ancré en haut à gauche : le titre et le contenu occupent
+// ainsi toujours 100% de la largeur du cadre, sans marge horizontale.
+// Chaque vue dimensionne son propre contenu (cw/ch) pour que la hauteur mise
+// à l'échelle tienne dans EXPORT_H (voir buildMapExportSVG, dont le canevas
+// carte est calé sur l'espace disponible sous le bandeau plutôt que sur le
+// ratio propre du territoire) ; un éventuel dépassement serait simplement
+// rogné par le viewBox fixe plutôt que de réintroduire une marge.
 const EXPORT_W = 1980, EXPORT_H = 1200;
 function wrapExportSVG(inner, cw, ch) {
-  const scale = Math.min(EXPORT_W / cw, EXPORT_H / ch);
+  // Toujours mis à l'échelle par la largeur (jamais par un min(largeur,
+  // hauteur) qui laisserait une marge à droite dès que le contenu est
+  // proportionnellement plus étroit que 1980:1200) : le titre et le contenu
+  // doivent occuper 100% de la largeur du cadre d'export sur les 4 vues,
+  // sans exception. Si le contenu s'avère plus haut que EXPORT_H une fois mis
+  // à l'échelle, l'excédent est simplement rogné par le viewBox fixe plutôt
+  // que de réintroduire une marge horizontale.
+  const scale = EXPORT_W / cw;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
     + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
     + `<g transform="scale(${scale.toFixed(6)})">${inner}</g>`
     + `</svg>`;
   return { svg, width: EXPORT_W, height: EXPORT_H };
 }
-// Bord long de la carte Leaflet hors-écran (résolution de rasterisation des
-// tuiles avant l'ajustement final à EXPORT_W×EXPORT_H ci-dessus) : distinct
-// du format de sortie fixe, sert seulement à choisir une résolution de départ
-// raisonnable indépendamment de l'aspect du territoire.
-const EXPORT_LONG_EDGE = 2000;
 function wrapTitleLines(titleTxt, maxChars) {
   const words = String(titleTxt).split(/\s+/);
   const lines = []; let cur = '';
@@ -2060,21 +2097,28 @@ const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .c-zone-lbl{font-size:14px;font-weight:700;letter-spacing:0.08em}
 .c-line{fill:none;stroke-width:2.6;opacity:0.95}.c-line.dim{opacity:0.12}.c-dot.dim{opacity:0.12}
 .c-label-text{font-size:11px;font-weight:700;fill:#fff}`;
+// Format de référence du graphique à l'export : indépendant de la taille
+// réelle de #curves-chart en direct (cf. drawCurvesChart), choisi
+// suffisamment large par rapport à sa hauteur pour que le total (bandeau +
+// graphique + légende) reste toujours contraint par la largeur dans
+// wrapExportSVG plutôt que par la hauteur, quel que soit le nombre de lignes
+// de légende — sans quoi le rendu en direct (souvent proche du carré une
+// fois la fenêtre du navigateur prise en compte) rognerait fortement le bas
+// du graphique une fois mis à l'échelle par la largeur.
+const CURVE_EXPORT_W = 1600, CURVE_EXPORT_H = 620;
 // Légende en ligne(s) sous le graphique (comme l'export école) plutôt qu'un
 // panneau latéral de largeur fixe : minimise son emprise et laisse le chart
 // utiliser toute la largeur disponible.
 function serializeCurvesSVG() {
   const cache = scaleCache[state.echelle];
-  const src = document.getElementById('curves-svg');
-  const vb = (src.getAttribute('viewBox') || '0 0 800 500').split(/\s+/).map(Number);
-  const W = vb[2], H = vb[3];
-  // Étiquettes de valeur par point (cf. renderCurveValueLabels) : masquées
-  // par défaut, affichées seulement au survol — sans intérêt dans une image
-  // statique exportée, retirées explicitement plutôt que de dépendre des
-  // règles de visibilité CSS de la page (non reprises dans CURVE_EXPORT_CSS).
-  const srcClone = src.cloneNode(true);
-  srcClone.querySelectorAll('.c-label-bg, .c-label-text').forEach(el => el.remove());
-  const srcInnerHTML = srcClone.innerHTML;
+  const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
+  const W = CURVE_EXPORT_W, H = CURVE_EXPORT_H;
+  // Redessiné à un format de référence dédié (cf. CURVE_EXPORT_W/H) plutôt
+  // que de cloner le <svg> en direct : sans étiquettes de valeur par point
+  // (survol uniquement, sans intérêt dans une image statique).
+  const tmp = document.createElementNS(SVG_NS, 'svg');
+  drawCurvesChart(tmp, W, H, cache, years, sortedCodes(), false);
+  const srcInnerHTML = tmp.innerHTML;
   const titleTxt = escXml(currentTitleText());
   const codes = legendOrder();
   const foc = focusCodes.size > 0;
@@ -2129,7 +2173,7 @@ function serializeCurvesSVG() {
 const SCHOOL_CHART_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 .sc-grid{stroke:#e6e6e6;stroke-width:0.6}.sc-axis{stroke:#999;stroke-width:0.6}
 .sc-ref{stroke:#aaa;stroke-width:0.6;stroke-dasharray:2 2}
-.sc-tick{font-size:8px;fill:#777}.sc-tick2{font-size:7px;fill:#b8860b}
+.sc-tick{font-size:8px;fill:#777}.sc-tick-100{font-weight:700;fill:#333}.sc-tick2{font-size:7px;fill:#b8860b}
 .sc-xtick{font-size:7px;fill:#555}
 .sc-ytitle{font-size:7px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;fill:#777}
 .sc-zone-lbl{font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}
@@ -2288,15 +2332,6 @@ function mapExportLabelLines(nom) {
   if (cur) lines.push(cur);
   return lines;
 }
-// Ratio largeur/hauteur de l'emprise, en mètres Web Mercator (indépendant du
-// zoom) : sert uniquement à dimensionner le canevas d'export sans
-// lettrboxing, sur le même principe que les 3 autres vues (wrapExportSVG).
-function mapContentAspect(bounds) {
-  const p1 = L.CRS.EPSG3857.project(bounds.getNorthWest());
-  const p2 = L.CRS.EPSG3857.project(bounds.getSouthEast());
-  const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y);
-  return dx / Math.max(dy, 1);
-}
 async function buildMapExportInstance(mapW, mapH, bounds) {
   const holder = document.createElement('div');
   holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:'+mapW+'px;height:'+mapH+'px;pointer-events:none;';
@@ -2446,7 +2481,11 @@ async function buildSchoolExportMarkers(exportMap, bounds) {
 // groupe, cf. declusterSchoolPoints) : le centre du marqueur est ramené
 // dans le cadre (avec une petite marge) pour qu'il reste toujours au moins
 // partiellement visible, plutôt que de disparaître hors champ.
-function clampMarkerCenter(cx, cy, mapW, mapH, margin = 13) {
+// r=13 (comme avant) donnait des points visuellement bien plus gros que sur
+// la carte en direct (circleMarker radius=6) une fois rapportés à la même
+// échelle de sortie — ramené à une valeur plus proche de l'aperçu écran.
+const SCHOOL_MARKER_R = 8;
+function clampMarkerCenter(cx, cy, mapW, mapH, margin = SCHOOL_MARKER_R) {
   return [Math.max(margin, Math.min(mapW - margin, cx)), Math.max(margin, Math.min(mapH - margin, cy))];
 }
 function buildSchoolMarkersSVG(placed, breaks, colors, latLng2px, mapW, mapH) {
@@ -2455,7 +2494,7 @@ function buildSchoolMarkersSVG(placed, breaks, colors, latLng2px, mapW, mapH) {
     let [cx, cy] = latLng2px(lat, lng);
     [cx, cy] = clampMarkerCenter(cx, cy, mapW, mapH);
     const fill = getColorFromBreaks(getValueForSchoolMarker(school), breaks, colors);
-    parts += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="13" fill="${fill}" stroke="#333" stroke-width="2"/>`;
+    parts += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${SCHOOL_MARKER_R}" fill="${fill}" stroke="#333" stroke-width="1.5"/>`;
   }
   return parts;
 }
@@ -2464,9 +2503,9 @@ function drawSchoolMarkersCanvas(ctx, placed, breaks, colors, latLng2px, mapW, m
     let [cx, cy] = latLng2px(lat, lng);
     [cx, cy] = clampMarkerCenter(cx, cy, mapW, mapH);
     const fill = getColorFromBreaks(getValueForSchoolMarker(school), breaks, colors);
-    ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(cx, cy, SCHOOL_MARKER_R, 0, Math.PI * 2);
     ctx.fillStyle = fill; ctx.fill();
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke();
   }
 }
 // Valeur ayant servi au classement (buildSchoolExportMarkers) : cumul brut
@@ -2541,18 +2580,18 @@ function drawMapLabelsCanvas(ctx, cache, latLng2px) {
 // écoles (buildSchoolLegendItems).
 function buildMapLegendOverlay(mapW, mapH, title, items) {
   if (!items.length) return '';
-  const margin = 20, pad = 18, itemH = 30, swatchW = 26, swatchH = 18, swatchGap = 10, titleH = 34;
-  const textW = Math.max(...items.map(it => it.label.length * 9.5), title.length * 11);
+  const margin = 20, pad = 24, itemH = 42, swatchW = 36, swatchH = 26, swatchGap = 14, titleH = 48;
+  const textW = Math.max(...items.map(it => it.label.length * 13), title.length * 15);
   const boxW = pad * 2 + swatchW + swatchGap + textW;
   const boxH = pad * 2 + titleH + items.length * itemH;
   const boxX = mapW - boxW - margin, boxY = mapH - boxH - margin;
-  let svg = `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="6" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
+  let svg = `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="8" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
   const innerX = boxX + pad;
-  svg += `<text x="${innerX.toFixed(1)}" y="${(boxY + pad + 20).toFixed(1)}" font-family="Arial" font-size="21" font-weight="700" fill="#222">${escXml(title)}</text>`;
+  svg += `<text x="${innerX.toFixed(1)}" y="${(boxY + pad + 27).toFixed(1)}" font-family="Arial" font-size="28" font-weight="700" fill="#222">${escXml(title)}</text>`;
   items.forEach((it, i) => {
     const iy = boxY + pad + titleH + i * itemH;
-    svg += `<rect x="${innerX.toFixed(1)}" y="${iy.toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="3" fill="${it.color}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>`;
-    svg += `<text x="${(innerX + swatchW + swatchGap).toFixed(1)}" y="${(iy + swatchH - 4).toFixed(1)}" font-family="Arial" font-size="17" fill="#222">${escXml(it.label)}</text>`;
+    svg += `<rect x="${innerX.toFixed(1)}" y="${iy.toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="4" fill="${it.color}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>`;
+    svg += `<text x="${(innerX + swatchW + swatchGap).toFixed(1)}" y="${(iy + swatchH - 5).toFixed(1)}" font-family="Arial" font-size="22" fill="#222">${escXml(it.label)}</text>`;
   });
   return svg;
 }
@@ -2583,10 +2622,19 @@ async function buildMapExportSVG(fmt) {
     const groupedLayer = L.featureGroup(cache.geojson.features.map(f => L.geoJSON(f.geometry)));
     bounds = groupedLayer.getBounds();
   }
-  const aspect = mapContentAspect(bounds);
-  let mapW, mapH;
-  if (aspect >= 1) { mapW = EXPORT_LONG_EDGE; mapH = Math.round(EXPORT_LONG_EDGE / aspect); }
-  else { mapH = EXPORT_LONG_EDGE; mapW = Math.round(EXPORT_LONG_EDGE * aspect); }
+  // Le canevas de la carte est dimensionné pour occuper exactement l'espace
+  // du cadre d'export fixe (1980×1200) sous le bandeau titre, plutôt que
+  // d'après le ratio propre du territoire (mapContentAspect) : un territoire
+  // proche du carré ou en portrait donnait sinon un ratio total < 1980:1200,
+  // ce qui laissait une marge blanche à droite une fois la mise à l'échelle
+  // appliquée. fitBounds (cf. buildMapExportInstance) gère nativement un
+  // conteneur dont l'aspect ne correspond pas à celui du territoire, en
+  // affichant simplement un peu plus de fond de carte de part et d'autre —
+  // sans rogner ni déformer le contenu.
+  const mapW = EXPORT_W;
+  const banner = exportTitleBanner(titleTxt, mapW);
+  const contentY = banner.height + banner.gap;
+  const mapH = Math.round(EXPORT_H - contentY);
 
   const { exportMap, holder } = await buildMapExportInstance(mapW, mapH, bounds);
   try {
@@ -2632,8 +2680,6 @@ async function buildMapExportSVG(fmt) {
     }
 
     const totalW = mapW;
-    const banner = exportTitleBanner(titleTxt, totalW);
-    const contentY = banner.height + banner.gap;
     const totalH = contentY + mapH;
     const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
       + banner.svg

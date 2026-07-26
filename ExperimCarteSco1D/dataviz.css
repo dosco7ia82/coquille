@@ -316,6 +316,7 @@ body.session-expired #header, body.session-expired #sidebar { display: none; }
 .school-chart-svg { width: 100%; height: 11rem; display: block; }
 #info-school-chart { cursor: pointer; }
 .sc-tick    { font-size: 8.5px; fill: #777; }
+.sc-tick-100 { font-weight: 700; fill: #333; }
 .sc-tick2   { font-size: 8px; fill: #b8860b; }
 .sc-xtick   { font-size: 8.5px; fill: #555; }
 .sc-ytitle  { font-size: 8px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; fill: #777; }
