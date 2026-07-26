@@ -3154,6 +3154,7 @@ async function init() {
     }
     state.sessionActive = true;
     logSessionEvent('start');
+    startSessionHeartbeat();
   } catch (err) {
     state.sessionActive = false;
     state.sessionMessage = `Erreur lors de la vérification de la session : ${err.message}`;
@@ -3169,4 +3170,24 @@ document.addEventListener('DOMContentLoaded', init);
 // pagehide (et non beforeunload/unload, de moins en moins fiables et
 // dépréciés sur certains navigateurs) : se déclenche aussi bien en fermant
 // l'onglet qu'en naviguant ailleurs, y compris sur mobile.
-window.addEventListener('pagehide', () => { if (state.sessionActive) logSessionEvent('end'); });
+window.addEventListener('pagehide', () => {
+  if (!state.sessionActive) return;
+  logSessionEvent('end');
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+});
+// Heartbeat : re-signale périodiquement la session comme active pendant que
+// la page reste ouverte, en réutilisant l'action "end" (qui met à jour Fin
+// à l'heure courante pour la ligne ouverte — exactement l'effet voulu ici,
+// sans avoir besoin d'une action dédiée côté n8n). Fermer un onglet ou
+// naviguer ailleurs déclenche pagehide normalement (cf. ci-dessus) ; mais
+// fermer le navigateur entier d'un coup (ou un crash) peut tuer le processus
+// avant qu'une requête en cours n'aboutisse, y compris avec fetch keepalive
+// — dans ce cas, Fin reste à la valeur du dernier heartbeat plutôt que vide,
+// une approximation à la durée de l'intervalle près plutôt qu'une session
+// qui paraîtrait ne jamais s'être terminée.
+const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000;
+let heartbeatTimer = null;
+function startSessionHeartbeat() {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => logSessionEvent('end'), HEARTBEAT_INTERVAL_MS);
+}
