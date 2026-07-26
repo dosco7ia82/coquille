@@ -1287,10 +1287,13 @@ function schoolDisplayName(school, withCommune = true) {
 const SCHOOL_TYPE_ORDER = { 'E.M.PU': 0, 'E.E.PU': 1, 'E.P.PU': 2 };
 // Écarte les points-écoles trop proches à l'écran (chevauchement visuel) :
 // grille aussi carrée que possible (2 à 5 colonnes), triée par type d'école.
-function declusterSchoolPoints(points) {
-  const THRESHOLD_PX = 16, SPACING_PX = 14;
+// mapInstance : la carte Leaflet dont projeter les points — la carte en
+// direct par défaut, ou une carte hors-écran dédiée à l'export (résolution
+// différente, donc seuils de proximité différents — cf. appelants).
+function declusterSchoolPoints(points, mapInstance = map, thresholdPx = 16, spacingPx = 14) {
+  const THRESHOLD_PX = thresholdPx, SPACING_PX = spacingPx;
   const pts = points.map(p => {
-    const xy = map.latLngToLayerPoint([p.lat, p.lng]);
+    const xy = mapInstance.latLngToLayerPoint([p.lat, p.lng]);
     return { school: p, x: xy.x, y: xy.y };
   });
   const visited = new Array(pts.length).fill(false);
@@ -1329,7 +1332,7 @@ function declusterSchoolPoints(points) {
     });
   }
   return placed.map(({ school, x, y }) => {
-    const ll = map.layerPointToLatLng([x, y]);
+    const ll = mapInstance.layerPointToLatLng([x, y]);
     return { school, lat: ll.lat, lng: ll.lng };
   });
 }
@@ -1990,25 +1993,24 @@ function applySwatchColors(container) {
 function currentTitleText() {
   return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
 }
-// Toutes les images exportées (PNG/SVG, les 4 vues) sortent en largeur fixe
-// 1980px/96dpi ; la hauteur suit exactement l'aspect du contenu (bandeau
-// titre + contenu principal + légende, où le contenu principal occupe
-// toujours 100% de la largeur — cf. exportTitleBanner, qui adapte le titre
-// à cette largeur plutôt que l'inverse). Un contain-fit avec une hauteur
-// FIXE (1980×1200) letterboxait horizontalement dès que le contenu était un
-// peu plus haut que large (bandeau + légende ajoutés sous un contenu déjà
-// proche de 1980:1200) — d'où les marges blanches inutiles sur les côtés.
-// En dérivant la hauteur du contenu plutôt qu'en la fixant, la largeur est
-// toujours utilisée à 100%, sans jamais recadrer ni déborder.
-const EXPORT_W = 1980;
+// Toutes les images exportées (PNG/SVG, les 4 vues) sortent au format fixe
+// 1980×1200px/96dpi. Le contenu (bandeau titre + contenu principal +
+// légende) est mis à l'échelle par contenance (letterboxing, sans
+// déformation ni recadrage) puis ancré en haut à gauche plutôt que centré :
+// quand le contenu est au moins aussi large que haut par rapport à
+// 1980:1200 (le cas courant, le contenu principal occupant toujours 100%
+// de sa propre largeur — cf. exportTitleBanner), la largeur utilise tout
+// l'espace et seul le bas du cadre reste blanc ; sinon (contenu
+// exceptionnellement plus haut que large), l'ancrage en haut à gauche évite
+// au moins de répartir la marge des deux côtés.
+const EXPORT_W = 1980, EXPORT_H = 1200;
 function wrapExportSVG(inner, cw, ch) {
-  const scale = EXPORT_W / cw;
-  const height = Math.round(ch * scale);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${height}" viewBox="0 0 ${EXPORT_W} ${height}">`
-    + `<rect width="${EXPORT_W}" height="${height}" fill="#ffffff"/>`
+  const scale = Math.min(EXPORT_W / cw, EXPORT_H / ch);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_W}" height="${EXPORT_H}" viewBox="0 0 ${EXPORT_W} ${EXPORT_H}">`
+    + `<rect width="${EXPORT_W}" height="${EXPORT_H}" fill="#ffffff"/>`
     + `<g transform="scale(${scale.toFixed(6)})">${inner}</g>`
     + `</svg>`;
-  return { svg, width: EXPORT_W, height };
+  return { svg, width: EXPORT_W, height: EXPORT_H };
 }
 // Bord long de la carte Leaflet hors-écran (résolution de rasterisation des
 // tuiles avant l'ajustement final à EXPORT_W×EXPORT_H ci-dessus) : distinct
@@ -2378,6 +2380,106 @@ function drawMapPolygonsCanvas(ctx, cache, latLng2px) {
     ctx.globalAlpha = 1;
   }
 }
+/* ── Export de la vue Carte en mode "écoles" ──
+   Contours simplifiés des EPCI/circo (sans remplissage, cf.
+   simplifiedPolygonStyle), contours pointillés des RPI (cf.
+   rpiPolygonStyle), et points-écoles classés/décluttérés — que la carte
+   soit en vue d'ensemble ou zoomée sur une circo/EPCI (les deux cas
+   utilisent la même emprise que la carte en direct, cf. buildMapExportSVG). */
+function buildSimplifiedPolygonsSVG(cache, latLng2px) {
+  let parts = '';
+  for (const feature of cache.geojson.features) {
+    parts += `<path d="${mapPolygonPathD(feature, latLng2px)}" fill="none" stroke="#111" stroke-width="3"/>`;
+  }
+  return parts;
+}
+function drawSimplifiedPolygonsCanvas(ctx, cache, latLng2px) {
+  for (const feature of cache.geojson.features) {
+    const geom = feature.geometry;
+    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+    ctx.beginPath();
+    for (const rings of polys) for (const ring of rings) {
+      const [x0, y0] = latLng2px(ring[0][1], ring[0][0]); ctx.moveTo(x0, y0);
+      for (let i = 1; i < ring.length; i++) { const [x, y] = latLng2px(ring[i][1], ring[i][0]); ctx.lineTo(x, y); }
+      ctx.closePath();
+    }
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.stroke();
+  }
+}
+function rpiPolygonPathsD(rpiFC, latLng2px) {
+  return rpiFC.features.map(f => mapPolygonPathD(f, latLng2px));
+}
+function buildRpiPolygonsSVG(rpiFC, latLng2px) {
+  return rpiPolygonPathsD(rpiFC, latLng2px)
+    .map(d => `<path d="${d}" fill="none" stroke="#777" stroke-width="1.6" stroke-dasharray="9 7"/>`).join('');
+}
+function drawRpiPolygonsCanvas(ctx, rpiFC, latLng2px) {
+  ctx.setLineDash([9, 7]);
+  for (const d of rpiPolygonPathsD(rpiFC, latLng2px)) {
+    ctx.strokeStyle = '#777'; ctx.lineWidth = 1.6; ctx.stroke(new Path2D(d));
+  }
+  ctx.setLineDash([]);
+}
+// Données des points-écoles pour l'export : mêmes classes de rupture que
+// showSchoolsForFeature (calculées sur TOUTES les écoles, pas seulement
+// celles de la zone affichée, pour que la couleur d'une école ne dépende
+// pas du zoom/de la zone visible), mais décluttering et dessin limités aux
+// écoles dans l'emprise exportée (avec une petite marge pour ne pas couper
+// un point à cheval sur le bord) — sans ce filtre, les écoles hors-champ
+// (vue zoomée sur un seul EPCI/circo) se retrouvaient projetées à des
+// coordonnées aberrantes, loin en dehors du cadre.
+async function buildSchoolExportMarkers(exportMap, bounds) {
+  const model = await ensureSchoolData();
+  const isPct = state.type === 'pourcentage';
+  const valueOf = p => isPct ? p.cumulPct : p.cumul;
+  const withValue = model.points.filter(p => valueOf(p) != null);
+  const { breaks, colors } = isPct
+    ? buildJenksColors(withValue.map(valueOf), 8)
+    : buildSchoolBreaksFixed(withValue.map(valueOf), 5);
+  const paddedBounds = bounds.pad(0.15);
+  const visible = withValue.filter(p => paddedBounds.contains([p.lat, p.lng]));
+  const placed = declusterSchoolPoints(visible, exportMap, 36, 32);
+  return { placed, breaks, colors, isPct };
+}
+// Une école proche du bord de l'emprise exportée peut être décalée hors
+// cadre par le décluttering (grille étalée autour du centroïde d'un
+// groupe, cf. declusterSchoolPoints) : le centre du marqueur est ramené
+// dans le cadre (avec une petite marge) pour qu'il reste toujours au moins
+// partiellement visible, plutôt que de disparaître hors champ.
+function clampMarkerCenter(cx, cy, mapW, mapH, margin = 13) {
+  return [Math.max(margin, Math.min(mapW - margin, cx)), Math.max(margin, Math.min(mapH - margin, cy))];
+}
+function buildSchoolMarkersSVG(placed, breaks, colors, latLng2px, mapW, mapH) {
+  let parts = '';
+  for (const { school, lat, lng } of placed) {
+    let [cx, cy] = latLng2px(lat, lng);
+    [cx, cy] = clampMarkerCenter(cx, cy, mapW, mapH);
+    const fill = getColorFromBreaks(getValueForSchoolMarker(school), breaks, colors);
+    parts += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="13" fill="${fill}" stroke="#333" stroke-width="2"/>`;
+  }
+  return parts;
+}
+function drawSchoolMarkersCanvas(ctx, placed, breaks, colors, latLng2px, mapW, mapH) {
+  for (const { school, lat, lng } of placed) {
+    let [cx, cy] = latLng2px(lat, lng);
+    [cx, cy] = clampMarkerCenter(cx, cy, mapW, mapH);
+    const fill = getColorFromBreaks(getValueForSchoolMarker(school), breaks, colors);
+    ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+// Valeur ayant servi au classement (buildSchoolExportMarkers) : cumul brut
+// ou en %, selon l'unité affichée — même logique que valueOf() dans
+// showSchoolsForFeature.
+function getValueForSchoolMarker(school) {
+  return state.type === 'pourcentage' ? school.cumulPct : school.cumul;
+}
+function buildSchoolLegendItems(breaks, colors, isPct) {
+  const items = [];
+  for (let i = colors.length - 1; i >= 0; i--) items.push({ label: fmtSchoolLegendRange(breaks[i], breaks[i+1], isPct), color: colors[i] });
+  return { title: schoolLegendTitle(isPct), items };
+}
 // Mêmes règles d'affichage que les étiquettes de la carte en direct
 // (addLabels) : nom seul si "Afficher les valeurs" est désactivé, valeur
 // principale + éventuellement seconde unité sinon.
@@ -2431,25 +2533,22 @@ function drawMapLabelsCanvas(ctx, cache, latLng2px) {
     });
   }
 }
-// Légende (mêmes ruptures/couleurs que #map-legend, cf. updateLegend) : bloc
-// flottant en bas à droite, par-dessus la carte — comme à l'écran (cf.
-// #map-legend en CSS) — plutôt qu'une bande sous la carte qui grandirait le
-// canevas et ne correspondrait plus à l'aperçu direct.
-function buildMapLegendOverlay(mapW, mapH) {
-  const cache = scaleCache[state.echelle];
-  const key = activeBreakKey();
-  const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
-  if (!breaks || breaks.length < 2 || !n) return '';
+// Légende : bloc flottant en bas à droite, par-dessus la carte — comme à
+// l'écran (cf. #map-legend en CSS) — plutôt qu'une bande sous la carte qui
+// grandirait le canevas et ne correspondrait plus à l'aperçu direct.
+// Générique (titre + items {label,color} déjà résolus) : sert à la fois à
+// la légende choroplèthe (buildChoroplethLegendItems) et à celle du mode
+// écoles (buildSchoolLegendItems).
+function buildMapLegendOverlay(mapW, mapH, title, items) {
+  if (!items.length) return '';
   const margin = 20, pad = 18, itemH = 30, swatchW = 26, swatchH = 18, swatchGap = 10, titleH = 34;
-  const items = [];
-  for (let i = n - 1; i >= 0; i--) items.push({ label: fmtLegendRange(breaks[i], breaks[i+1]), color: colors[i] });
-  const textW = Math.max(...items.map(it => it.label.length * 9.5), legendTitle().length * 11);
+  const textW = Math.max(...items.map(it => it.label.length * 9.5), title.length * 11);
   const boxW = pad * 2 + swatchW + swatchGap + textW;
   const boxH = pad * 2 + titleH + items.length * itemH;
   const boxX = mapW - boxW - margin, boxY = mapH - boxH - margin;
   let svg = `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="6" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
   const innerX = boxX + pad;
-  svg += `<text x="${innerX.toFixed(1)}" y="${(boxY + pad + 20).toFixed(1)}" font-family="Arial" font-size="21" font-weight="700" fill="#222">${escXml(legendTitle())}</text>`;
+  svg += `<text x="${innerX.toFixed(1)}" y="${(boxY + pad + 20).toFixed(1)}" font-family="Arial" font-size="21" font-weight="700" fill="#222">${escXml(title)}</text>`;
   items.forEach((it, i) => {
     const iy = boxY + pad + titleH + i * itemH;
     svg += `<rect x="${innerX.toFixed(1)}" y="${iy.toFixed(1)}" width="${swatchW}" height="${swatchH}" rx="3" fill="${it.color}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>`;
@@ -2457,13 +2556,33 @@ function buildMapLegendOverlay(mapW, mapH) {
   });
   return svg;
 }
+function buildChoroplethLegendItems() {
+  const cache = scaleCache[state.echelle];
+  const key = activeBreakKey();
+  const breaks = cache.model.BREAKS[key], colors = cache.model.COLORS[key], n = cache.model.N[key];
+  if (!breaks || breaks.length < 2 || !n) return { title: '', items: [] };
+  const items = [];
+  for (let i = n - 1; i >= 0; i--) items.push({ label: fmtLegendRange(breaks[i], breaks[i+1]), color: colors[i] });
+  return { title: legendTitle(), items };
+}
 async function buildMapExportSVG(fmt) {
   const cache = scaleCache[state.echelle];
   if (!cache.geojson) throw new Error('Carte non chargée.');
   const titleTxt = escXml(currentTitleText());
+  const schoolsMode = schoolsModeActive;
 
-  const groupedLayer = L.featureGroup(cache.geojson.features.map(f => L.geoJSON(f.geometry)));
-  const bounds = groupedLayer.getBounds();
+  // En mode écoles, l'emprise à exporter est celle actuellement affichée à
+  // l'écran (vue d'ensemble ou zoomée sur une circo/EPCI cliquée, cf.
+  // onFeatureClick) — contrairement à la carte choroplèthe, qui exporte
+  // toujours l'emprise complète du territoire quel que soit le pan/zoom en
+  // cours (comportement inchangé, établi précédemment).
+  let bounds;
+  if (schoolsMode) {
+    bounds = map.getBounds();
+  } else {
+    const groupedLayer = L.featureGroup(cache.geojson.features.map(f => L.geoJSON(f.geometry)));
+    bounds = groupedLayer.getBounds();
+  }
   const aspect = mapContentAspect(bounds);
   let mapW, mapH;
   if (aspect >= 1) { mapW = EXPORT_LONG_EDGE; mapH = Math.round(EXPORT_LONG_EDGE / aspect); }
@@ -2473,19 +2592,45 @@ async function buildMapExportSVG(fmt) {
   try {
     const latLng2px = (lat, lng) => { const pt = exportMap.latLngToContainerPoint([lat, lng]); return [pt.x, pt.y]; };
 
-    let mapInner;
-    if (fmt === 'png') {
-      const canvas = await rasterizeMapTiles(holder, mapW, mapH);
-      const ctx = canvas.getContext('2d');
-      drawMapPolygonsCanvas(ctx, cache, latLng2px);
-      drawMapLabelsCanvas(ctx, cache, latLng2px);
-      mapInner = `<image href="${canvas.toDataURL('image/png')}" x="0" y="0" width="${mapW}" height="${mapH}"/>`;
+    let mapInner, legendSVG;
+    if (schoolsMode) {
+      // Filtré à l'emprise exportée (avec marge) pour la même raison que les
+      // écoles (cf. buildSchoolExportMarkers) : un RPI loin de la zone
+      // affichée se projetterait à des coordonnées aberrantes.
+      const paddedBounds = bounds.pad(0.15);
+      const rpiFCAll = await ensureRpiGeometry();
+      const rpiFC = { type: 'FeatureCollection', features: rpiFCAll.features.filter(f => paddedBounds.contains(featureCenter(f))) };
+      const { placed, breaks, colors, isPct } = await buildSchoolExportMarkers(exportMap, bounds);
+      if (fmt === 'png') {
+        const canvas = await rasterizeMapTiles(holder, mapW, mapH);
+        const ctx = canvas.getContext('2d');
+        drawSimplifiedPolygonsCanvas(ctx, cache, latLng2px);
+        if (rpiFC.features.length) drawRpiPolygonsCanvas(ctx, rpiFC, latLng2px);
+        drawSchoolMarkersCanvas(ctx, placed, breaks, colors, latLng2px, mapW, mapH);
+        mapInner = `<image href="${canvas.toDataURL('image/png')}" x="0" y="0" width="${mapW}" height="${mapH}"/>`;
+      } else {
+        mapInner = `<rect width="${mapW}" height="${mapH}" fill="#f5f5f5"/>`
+          + buildSimplifiedPolygonsSVG(cache, latLng2px)
+          + (rpiFC.features.length ? buildRpiPolygonsSVG(rpiFC, latLng2px) : '')
+          + buildSchoolMarkersSVG(placed, breaks, colors, latLng2px, mapW, mapH);
+      }
+      const { title, items } = buildSchoolLegendItems(breaks, colors, isPct);
+      legendSVG = buildMapLegendOverlay(mapW, mapH, title, items);
     } else {
-      mapInner = `<rect width="${mapW}" height="${mapH}" fill="#f5f5f5"/>`
-        + buildMapPolygonsSVG(cache, latLng2px) + buildMapLabelsSVG(cache, latLng2px);
+      if (fmt === 'png') {
+        const canvas = await rasterizeMapTiles(holder, mapW, mapH);
+        const ctx = canvas.getContext('2d');
+        drawMapPolygonsCanvas(ctx, cache, latLng2px);
+        drawMapLabelsCanvas(ctx, cache, latLng2px);
+        mapInner = `<image href="${canvas.toDataURL('image/png')}" x="0" y="0" width="${mapW}" height="${mapH}"/>`;
+      } else {
+        mapInner = `<rect width="${mapW}" height="${mapH}" fill="#f5f5f5"/>`
+          + buildMapPolygonsSVG(cache, latLng2px) + buildMapLabelsSVG(cache, latLng2px);
+      }
+      const { title, items } = buildChoroplethLegendItems();
+      legendSVG = buildMapLegendOverlay(mapW, mapH, title, items);
     }
 
-    const legendSVG = buildMapLegendOverlay(mapW, mapH);
     const totalW = mapW;
     const banner = exportTitleBanner(titleTxt, totalW);
     const contentY = banner.height + banner.gap;
@@ -2835,10 +2980,6 @@ document.getElementById('sel-export').addEventListener('change', async e => {
       // L'export Excel est indépendant de la vue/échelle/unité affichées :
       // il contient toujours l'intégralité des données du document.
       await exportAllDataXLSX();
-      return;
-    }
-    if (state.vue === 'carte' && schoolsModeActive) {
-      alert("L'export de la carte n'est pas disponible en mode écoles.");
       return;
     }
     const result = state.vue === 'carte' ? await buildMapExportSVG(format)
