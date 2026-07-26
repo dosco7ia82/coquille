@@ -45,18 +45,22 @@ const state = {
   showValues: urlWantsValues,       // étiquettes carte : nom + valeur (sinon nom seul)
   showSecondUnit: urlWantsUnite2,   // étiquettes carte : 3e ligne (unité complémentaire)
 };
+// Reconstruit les paramètres d'URL de zéro (plutôt que de réutiliser
+// `new URLSearchParams(window.location.search)`, qui conserve l'ordre
+// existant des clés) afin que les variables d'état apparaissent toujours en
+// premier, SessID en dernier.
 function syncUrlFromState() {
-  const params = new URLSearchParams(window.location.search);
-  if (state.sessId) params.set('SessID', state.sessId); else params.delete('SessID');
+  const params = new URLSearchParams();
   params.set('echelle', state.echelle);
   params.set('vue', state.vue);
   params.set('unite', state.type);
   params.set('ecoles', schoolsModeActive ? '1' : '0');
-  params.set('valeurs', state.showValues ? '1' : '0');
-  params.set('unite2', state.showSecondUnit ? '1' : '0');
   const cache = scaleCache[state.echelle];
   const rentree = cache?.model?.RENTREES_DISPO?.[state.rentreeIdx];
-  if (rentree) params.set('timeline', rentree); else params.delete('timeline');
+  if (rentree) params.set('timeline', rentree);
+  params.set('valeurs', state.showValues ? '1' : '0');
+  params.set('unite2', state.showSecondUnit ? '1' : '0');
+  if (state.sessId) params.set('SessID', state.sessId);
   history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`);
 }
 
@@ -465,6 +469,13 @@ function styleFeature(feature) {
 /* Mode "Afficher les écoles" : les polygones ne sont cliquables / survolables
    que lorsque ce mode est actif (bouton dédié sous la section Échelle). */
 let schoolsModeActive = false;
+// Emprise (tight, avant le padding de fitBounds) du polygone actuellement
+// zoomé en mode écoles (clic sur une circo/EPCI), null en vue d'ensemble —
+// réutilisée par l'export carte pour un cadrage aussi serré que la carte
+// choroplèthe (cf. buildMapExportSVG), plutôt que le viewport courant de la
+// carte en direct (map.getBounds()), plus lâche (zoom arrondi, marge de
+// fitBounds, pan manuel...).
+let schoolsZoomedBounds = null;
 function simplifiedPolygonStyle() { return { weight: 4, color: '#111', fillOpacity: 0 }; }
 function onEachFeature(feature, layer) {
   layer.on({
@@ -483,7 +494,8 @@ function onEachFeature(feature, layer) {
 }
 function onFeatureClick(feature, layer) {
   if (!schoolsModeActive) return;
-  map.fitBounds(layer.getBounds(), { padding: [20,20], animate: false });
+  schoolsZoomedBounds = layer.getBounds();
+  map.fitBounds(schoolsZoomedBounds, { padding: [20,20], animate: false });
   // Le calage en grille des points-écoles est fait en pixels écran : sans
   // recalcul après le zoom, l'espacement (fixé à l'ancien niveau de zoom)
   // paraît trop large une fois zoomé sur le polygone.
@@ -508,6 +520,7 @@ function closeInfoPanel() {
 }
 function enterSchoolsMode() {
   schoolsModeActive = true;
+  schoolsZoomedBounds = null;
   clearLabels();
   if (geojsonLayer) geojsonLayer.eachLayer(l => l.setStyle(simplifiedPolygonStyle()));
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
@@ -521,6 +534,7 @@ function enterSchoolsMode() {
 }
 function exitSchoolsMode() {
   schoolsModeActive = false;
+  schoolsZoomedBounds = null;
   clearSchoolLayer();
   clearRpiLayer();
   if (geojsonLayer) { geojsonLayer.eachLayer(l => geojsonLayer.resetStyle(l)); addLabels(); }
@@ -1466,6 +1480,7 @@ function renderMap() {
   if (geojsonLayer) geojsonLayer.remove();
   clearLabels();
   geojsonLayer = L.geoJSON(cache.geojson, { style: styleFeature, onEachFeature }).addTo(map);
+  schoolsZoomedBounds = null;
   lastFitBounds = geojsonLayer.getBounds();
   map.fitBounds(lastFitBounds, { padding: [10,10] });
   if (schoolsModeActive) {
@@ -2028,6 +2043,20 @@ function applySwatchColors(container) {
 function currentTitleText() {
   return document.getElementById('page-title').textContent.replace(/\s+/g,' ').trim();
 }
+// Sépare le titre principal de sa mention d'unité complémentaire (span
+// .title-unit, ex. "En pourcentage de variation") : à l'export, cette
+// mention est précédée d'un tiret et rendue en texte normal (non gras),
+// contrairement au reste du titre — cf. exportTitleBanner.
+function currentTitleParts() {
+  const titleEl = document.getElementById('page-title');
+  const unitEl = titleEl.querySelector('.title-unit');
+  const unit = unitEl ? unitEl.textContent.replace(/\s+/g,' ').trim() : '';
+  const clone = titleEl.cloneNode(true);
+  const unitInClone = clone.querySelector('.title-unit');
+  if (unitInClone) unitInClone.remove();
+  const main = clone.textContent.replace(/\s+/g,' ').trim();
+  return { main, unit };
+}
 // Toutes les images exportées (PNG/SVG, les 4 vues) sortent au format fixe
 // 1980×1200px/96dpi. Le contenu (bandeau titre + contenu principal +
 // légende) est toujours mis à l'échelle par la largeur (jamais par
@@ -2074,18 +2103,35 @@ function wrapTitleLines(titleTxt, maxChars) {
 // absolues, pour un rendu final identique sur les 4 vues.
 const TITLE_FONT_TARGET_PX = 26, TITLE_PAD_X_TARGET_PX = 16, TITLE_PAD_Y_TARGET_PX = 11,
       TITLE_STROKE_TARGET_PX = 2, TITLE_GAP_TARGET_PX = 14;
-function exportTitleBanner(titleTxt, totalW) {
+// mainTxt/unitTxt : texte brut (non échappé, escXml appliqué ici). unitTxt
+// est la mention d'unité complémentaire (ex. "En pourcentage de variation",
+// cf. currentTitleParts) : précédée d'un tiret et rendue en texte normal
+// (non gras), à la différence du reste du titre — reprend telle quelle
+// depuis un simple appel avec unitTxt='' pour un titre entièrement gras
+// (graphique école, qui n'a pas cette mention).
+const TITLE_MARK = '\u0001';
+function exportTitleBanner(mainTxt, unitTxt, totalW) {
   const scale = totalW / EXPORT_W;
   const fontSize = TITLE_FONT_TARGET_PX * scale, padX = TITLE_PAD_X_TARGET_PX * scale,
         padY = TITLE_PAD_Y_TARGET_PX * scale, strokeW = TITLE_STROKE_TARGET_PX * scale;
   const maxChars = Math.max(6, Math.floor((totalW - padX * 2) / (fontSize * 0.56)));
-  const lines = wrapTitleLines(titleTxt, maxChars);
+  const combined = unitTxt ? mainTxt + TITLE_MARK + ' - ' + unitTxt : mainTxt;
+  const lines = wrapTitleLines(combined, maxChars);
   const lineH = fontSize * 1.3;
   const height = padY * 2 + lines.length * lineH;
   let svg = `<rect x="${(strokeW/2).toFixed(2)}" y="${(strokeW/2).toFixed(2)}" width="${(totalW-strokeW).toFixed(1)}" height="${(height-strokeW).toFixed(1)}" fill="#ffffff" stroke="#000000" stroke-width="${strokeW.toFixed(2)}"/>`;
   lines.forEach((ln, i) => {
     const ty = padY + fontSize * 0.85 + i * lineH;
-    svg += `<text x="${padX.toFixed(1)}" y="${ty.toFixed(1)}" style="font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:${fontSize.toFixed(2)}px;fill:#161616">${escXml(ln)}</text>`;
+    const markIdx = ln.indexOf(TITLE_MARK);
+    const textStyle = `font-family:Arial,Helvetica,sans-serif;font-size:${fontSize.toFixed(2)}px;fill:#161616`;
+    if (markIdx === -1) {
+      svg += `<text x="${padX.toFixed(1)}" y="${ty.toFixed(1)}" style="${textStyle};font-weight:bold">${escXml(ln)}</text>`;
+    } else {
+      const boldPart = ln.slice(0, markIdx), normalPart = ln.slice(markIdx + TITLE_MARK.length);
+      svg += `<text x="${padX.toFixed(1)}" y="${ty.toFixed(1)}" style="${textStyle}">`
+        + (boldPart ? `<tspan style="font-weight:bold">${escXml(boldPart)}</tspan>` : '')
+        + `<tspan style="font-weight:400">${escXml(normalPart)}</tspan></text>`;
+    }
   });
   return { svg, height, gap: TITLE_GAP_TARGET_PX * scale };
 }
@@ -2105,21 +2151,15 @@ const CURVE_EXPORT_CSS = `text{font-family:'Public Sans',Arial,sans-serif}
 // de légende — sans quoi le rendu en direct (souvent proche du carré une
 // fois la fenêtre du navigateur prise en compte) rognerait fortement le bas
 // du graphique une fois mis à l'échelle par la largeur.
-const CURVE_EXPORT_W = 1600, CURVE_EXPORT_H = 620;
+const CURVE_EXPORT_W = 1600;
 // Légende en ligne(s) sous le graphique (comme l'export école) plutôt qu'un
 // panneau latéral de largeur fixe : minimise son emprise et laisse le chart
 // utiliser toute la largeur disponible.
 function serializeCurvesSVG() {
   const cache = scaleCache[state.echelle];
   const years = cache.model.RENTREES_DISPO.filter(r => r !== 'CUMUL');
-  const W = CURVE_EXPORT_W, H = CURVE_EXPORT_H;
-  // Redessiné à un format de référence dédié (cf. CURVE_EXPORT_W/H) plutôt
-  // que de cloner le <svg> en direct : sans étiquettes de valeur par point
-  // (survol uniquement, sans intérêt dans une image statique).
-  const tmp = document.createElementNS(SVG_NS, 'svg');
-  drawCurvesChart(tmp, W, H, cache, years, sortedCodes(), false);
-  const srcInnerHTML = tmp.innerHTML;
-  const titleTxt = escXml(currentTitleText());
+  const W = CURVE_EXPORT_W;
+  const titleParts = currentTitleParts();
   const codes = legendOrder();
   const foc = focusCodes.size > 0;
 
@@ -2135,6 +2175,23 @@ function serializeCurvesSVG() {
     rowW += (row.length > 1 ? itemGap : 0) + itemW;
   }
   if (row.length) rows.push({ items: row, w: rowW });
+  const legendH = rows.length ? (rowGap + rows.length * lineH + 6) : 0;
+
+  const totalW = W;
+  const banner = exportTitleBanner(titleParts.main, titleParts.unit, totalW);
+  const contentY = banner.height + banner.gap;
+  // Le graphique est redessiné à une hauteur H calculée pour que le total
+  // (bandeau + graphique + légende) remplisse exactement EXPORT_H une fois
+  // mis à l'échelle par la largeur (cf. wrapExportSVG) : le contenu occupe
+  // ainsi 100% de la hauteur disponible sous le bandeau, comme de la largeur,
+  // plutôt que de laisser une marge blanche en bas (cf. CURVE_EXPORT_W,
+  // choisi assez large pour garantir que H reste positif et confortable même
+  // avec plusieurs lignes de légende).
+  const totalHTarget = EXPORT_H * (totalW / EXPORT_W);
+  const H = totalHTarget - contentY - legendH;
+  const tmp = document.createElementNS(SVG_NS, 'svg');
+  drawCurvesChart(tmp, W, H, cache, years, sortedCodes(), false);
+  const srcInnerHTML = tmp.innerHTML;
 
   let leg = '', ly = H + rowGap;
   for (const r of rows) {
@@ -2147,11 +2204,7 @@ function serializeCurvesSVG() {
     }
     ly += lineH;
   }
-  const legendH = rows.length ? (ly - H + 6) : 0;
 
-  const totalW = W;
-  const banner = exportTitleBanner(titleTxt, totalW);
-  const contentY = banner.height + banner.gap;
   const totalH = contentY + H + legendH;
   const inner = `<style>${CURVE_EXPORT_CSS}</style>`
     + `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
@@ -2194,7 +2247,7 @@ function serializeSchoolCompareSVG() {
   drawSchoolCompareChart(tmp, data);
   const vb = (tmp.getAttribute('viewBox') || '0 0 420 190').split(/\s+/).map(Number);
   const W = vb[2], H = vb[3];
-  const titleTxt = escXml(schoolCompareTitle || 'Comparaison base 100');
+  const titleTxt = schoolCompareTitle || 'Comparaison base 100';
   const baseLabel = data.years[data.baseIdx];
   const items = [
     { label: 'École', color: '#1563C2', swatch: 'line' },
@@ -2238,7 +2291,7 @@ function serializeSchoolCompareSVG() {
   const legendH = rows.length ? (ly - H + 6) : 0;
 
   const totalW = W;
-  const banner = exportTitleBanner(titleTxt, totalW);
+  const banner = exportTitleBanner(titleTxt, '', totalW);
   const contentY = banner.height + banner.gap;
   const totalH = contentY + H + legendH;
   const inner = `<style>${SCHOOL_CHART_EXPORT_CSS}</style>`
@@ -2304,9 +2357,9 @@ function heatmapToSVG() {
       }
     }
   }
-  const titleTxt = escXml(currentTitleText());
+  const titleParts = currentTitleParts();
   const totalW = W;
-  const banner = exportTitleBanner(titleTxt, totalW);
+  const banner = exportTitleBanner(titleParts.main, titleParts.unit, totalW);
   const contentY = banner.height + banner.gap;
   const totalH = contentY + H;
   const inner = `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="#ffffff"/>`
@@ -2607,17 +2660,20 @@ function buildChoroplethLegendItems() {
 async function buildMapExportSVG(fmt) {
   const cache = scaleCache[state.echelle];
   if (!cache.geojson) throw new Error('Carte non chargée.');
-  const titleTxt = escXml(currentTitleText());
+  const titleParts = currentTitleParts();
   const schoolsMode = schoolsModeActive;
 
-  // En mode écoles, l'emprise à exporter est celle actuellement affichée à
-  // l'écran (vue d'ensemble ou zoomée sur une circo/EPCI cliquée, cf.
-  // onFeatureClick) — contrairement à la carte choroplèthe, qui exporte
-  // toujours l'emprise complète du territoire quel que soit le pan/zoom en
-  // cours (comportement inchangé, établi précédemment).
+  // L'emprise à exporter est toujours celle des polygones affichés (vue
+  // d'ensemble : tout le territoire ; vue zoomée sur une circo/EPCI cliquée
+  // en mode écoles : seulement ce polygone), jamais le viewport actuel de la
+  // carte en direct (map.getBounds()) — celui-ci peut être plus lâche que les
+  // polygones eux-mêmes (zoom arrondi, marge de fitBounds initiale, pan
+  // manuel...), ce qui donnait un cadrage moins serré à l'export en mode
+  // écoles que sur la carte choroplèthe, resserrée par construction sur
+  // groupedLayer.getBounds().
   let bounds;
-  if (schoolsMode) {
-    bounds = map.getBounds();
+  if (schoolsMode && schoolsZoomedBounds) {
+    bounds = schoolsZoomedBounds;
   } else {
     const groupedLayer = L.featureGroup(cache.geojson.features.map(f => L.geoJSON(f.geometry)));
     bounds = groupedLayer.getBounds();
@@ -2632,7 +2688,7 @@ async function buildMapExportSVG(fmt) {
   // affichant simplement un peu plus de fond de carte de part et d'autre —
   // sans rogner ni déformer le contenu.
   const mapW = EXPORT_W;
-  const banner = exportTitleBanner(titleTxt, mapW);
+  const banner = exportTitleBanner(titleParts.main, titleParts.unit, mapW);
   const contentY = banner.height + banner.gap;
   const mapH = Math.round(EXPORT_H - contentY);
 
@@ -2978,6 +3034,7 @@ document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomI
 document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
 document.getElementById('btn-zoom-reset').addEventListener('click', () => {
   closeInfoPanel();
+  schoolsZoomedBounds = null;
   if (lastFitBounds) map.fitBounds(lastFitBounds, { padding: [10,10] });
 });
 document.getElementById('info-panel-toggle').addEventListener('click', () => {
