@@ -82,21 +82,22 @@ async function postJson(url, sessId) {
   if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status}).`);
   return await res.json();
 }
-// Journalisation Sessions_logs_ (Grist) : un appel "start" à l'ouverture
-// (fetch, best-effort — l'échec ne doit jamais bloquer l'accès à la page),
-// un "end" en quittant (sendBeacon, seule API fiable pour envoyer une
-// requête pendant le déchargement de la page ; un fetch classique peut être
-// annulé à ce moment-là). n8n distingue les deux via "action" et upsert la
-// ligne Grist par SessID (Debut/Fin/Adresse_IP renseignés côté n8n).
+// Journalisation Sessions_logs_ (Grist) : un appel "start" à l'ouverture et
+// un "end" en quittant (fetch keepalive:true dans les deux cas — fiable
+// pendant le déchargement de la page, contrairement à un fetch normal qui
+// peut être annulé à ce moment-là). navigator.sendBeacon() serait une
+// alternative pour "end", mais envoie toujours la requête avec les
+// identifiants (cookies) sans possibilité de désactiver ça : sans l'en-tête
+// Access-Control-Allow-Credentials (non nécessaire ici, on n'utilise pas de
+// cookie), le navigateur bloque la réponse en CORS. fetch keepalive n'envoie
+// pas d'identifiants vers une origine différente par défaut, évitant le
+// problème. n8n distingue les deux appels via "action" et upsert la ligne
+// Grist par SessID (Debut/Fin/Adresse_IP renseignés côté n8n).
 function logSessionEvent(action) {
   if (!state.sessId) return;
   const payload = JSON.stringify({ SessID: state.sessId, action });
-  if (action === 'end' && navigator.sendBeacon) {
-    navigator.sendBeacon(CONFIG.webhookSessionsLog, new Blob([payload], { type: 'application/json' }));
-  } else {
-    fetch(CONFIG.webhookSessionsLog, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true })
-      .catch(err => console.error('[dataviz] Erreur journalisation session :', err));
-  }
+  fetch(CONFIG.webhookSessionsLog, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true })
+    .catch(err => console.error('[dataviz] Erreur journalisation session :', err));
 }
 async function fetchGeojson(url) {
   const res = await fetch(url);
