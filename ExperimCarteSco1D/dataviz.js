@@ -1115,7 +1115,13 @@ function buildSchoolModel(records) {
       const vLast = s.years[lastRS], vPrev = prevFirstRS != null ? s.years[prevFirstRS] : null;
       if (vLast != null && vPrev != null) {
         s.cumul = vLast - vPrev;
-        if (vPrev !== 0) s.cumulPct = (vLast - vPrev) / vPrev * 100;
+        // Une école fermée (effectif nul à la dernière rentrée du cumul)
+        // affiche toujours exactement -100%, une valeur dégénérée (pas une
+        // mesure de déclin comparable aux autres écoles) qui fausserait les
+        // classes (Jenks) et la légende en unité Pourcentage : cumulPct
+        // reste donc non défini pour ces écoles (le cumul en effectifs
+        // bruts, lui, reste pertinent et n'est pas affecté).
+        if (vPrev !== 0 && vLast !== 0) s.cumulPct = (vLast - vPrev) / vPrev * 100;
       }
     }
     model.points.push(s);
